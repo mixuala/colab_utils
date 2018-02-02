@@ -160,3 +160,64 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
   print("restored: bucket={} \n> checkpoint={}".format(bucket_path, checkpoint_name))
   return checkpoint_filename
+
+def install_ngrok(bin_dir="/tmp"):
+  ROOT = bin_dir
+  CWD = %pwd
+  import os
+  is_grok_avail = os.path.isfile(os.path.join(ROOT,'ngrok'))
+  if is_grok_avail:
+    print("grok installed")
+  else:
+    import platform
+    plat = platform.platform() # 'Linux-4.4.64+-x86_64-with-Ubuntu-17.10-artful'
+    if `Linux` in plat and `x86_64` in plat:
+      %cd $dir
+      ! wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
+      ! unzip ngrok-stable-linux-amd64.zip
+      %mv ngrok $ROOT
+      %rm ngrok-stable-linux-amd64.zip
+      is_grok_avail = True
+      %cd $CWD
+    else:
+      raise ValueError( "ERROR, ngrok install not configured for this platform, platform={}".format(plat))
+
+def launch_tensorboard(bin_dir="/tmp"):
+  """returns a public tensorboard url based on the ngrok package
+
+  see: https://stackoverflow.com/questions/47818822/can-i-use-tensorboard-with-google-colab
+
+  Args:
+    bin_dir: full path to directory for installing ngrok package
+
+  Return:
+    public url for tensorboard
+
+  """
+  install_ngrok(bin_dir)
+  
+  # check status of tensorboard and ngrok
+  ps = !ps -ax
+  is_tensorboard_running = len([f for f in ps if "tensorboard" in f ]) > 0
+  is_ngrok_running = len([f for f in ps if "ngrok" in f ]) > 0
+  print("status: tensorboard={}, ngrok={}".format(is_tensorboard_running, is_ngrok_running))
+
+  if not is_tensorboard_running:
+    get_ipython().system_raw(
+        'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
+        .format(LOG_DIR)
+    )
+    is_tensorboard_running = True
+    
+  if not is_ngrok_running:  
+    #    grok should be installed in /tmp/ngrok
+    get_ipython().system_raw('{}/ngrok http 6006 &'.format(bin_dir))
+    is_ngrok_running = True
+
+  # get tensorboard url
+  tensorboard_url = !curl -s http://localhost:4040/api/tunnels | python3 -c \
+      "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"  
+  tensorboard_url = tensorboard_url.strip()  
+  print("tensorboard url=", tensorboard_url)
+  return tensorboard_url
+
