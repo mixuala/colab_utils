@@ -141,25 +141,22 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   checkpoint_name = checkpoint_name[0][:-5]   # pop() and slice ".meta"
   checkpoint_name = os.path.join(train_dir,os.path.basename(checkpoint_name))
 
-  if os.path.isfile(checkpoint_filename):
+  if not os.path.isfile(checkpoint_filename):
+    with open(checkpoint_filename, 'w') as f:
+      is_checkpoint_found = False
+      line_entry = 'model_checkpoint_path: "{}"'.format(checkpoint_name)
+      f.write(line_entry)
+  else:
     # scan checkpoint_filename for checkpoint_name
     lines = !cat $checkpoint_filename
     found = [f for f in lines if os.path.basename(checkpoint_name) in f]
     is_checkpoint_found = len(found) > 0
 
-    if not is_checkpoint_found:
-      line_entry = 'all_model_checkpoint_paths: "{}"'.format(checkpoint_name)
-      # append line_entry to checkpoint_filename
-      !echo $line_entry >> $checkpoint_filename
-  else:
-    # print("creating file, name=", checkpoint_filename)
-    line_entry = 'model_checkpoint_path: "{}"'.format(checkpoint_name)
-    # print(line_entry)
-    !echo $line_entry >$checkpoint_filename
-    line_entry = 'all_model_checkpoint_paths: "{}"'.format(checkpoint_name)
-    !echo $line_entry >>$checkpoint_filename
-    # print(line_entry)
-    # BUG: $line_entry is echo'd to file without \" marks. write to file directly?
+  if not is_checkpoint_found:
+    line_entry = '\nall_model_checkpoint_paths: "{}"'.format(checkpoint_name)
+    # append line_entry to checkpoint_filename
+    with open(checkpoint_filename, 'a') as f:
+      f.write(line_entry)
 
   print("restored: bucket={} \n> checkpoint={}".format(bucket_path, checkpoint_name))
-  return checkpoint_name
+  return checkpoint_filename
