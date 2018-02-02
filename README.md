@@ -53,5 +53,5 @@ load a saved checkpoint from a GCS bucket to a training directory for restore
   returns a public tensorboard url based on the ngrok package
     ```
     colab_utils.launch_tensorboard()
-    # tensorboard url= ['http://58086138.ngrok.io']
+    # tensorboard url= http://58086138.ngrok.io
     ```

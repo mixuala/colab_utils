@@ -217,7 +217,7 @@ def launch_tensorboard(bin_dir="/tmp"):
   # get tensorboard url
   tensorboard_url = !curl -s http://localhost:4040/api/tunnels | python3 -c \
       "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"  
-  tensorboard_url = tensorboard_url.strip()  
+  tensorboard_url = tensorboard_url[0].strip()  
   print("tensorboard url=", tensorboard_url)
   return tensorboard_url
 
