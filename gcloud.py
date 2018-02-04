@@ -1,42 +1,92 @@
+# Copyright 2018 Michael Lin. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+"""Contains code for adding common services to non-persistent `colaboratory` VM sessions
+
+
+
+Note: these methods currently use ipython magic commands and therefore cannot be loaded 
+  from a module at this time. For now, you can copy/paste the entire script to a 
+  colaboratory cell to run.
+
+
+
+Long-running training sessions on `colaboratory` VMs are at risk of reset after 90 mins of
+inactivity or shutdown after 12hrs of training. This script allows you to save/restore
+checkpoints to Google Cloud Storage to avoid losing your results.
+
+
+************************************
+* A simple working script *
+************************************
+```
+import os
+import colab_utils
+
+# authorize access to Google Cloud SDK from `colaboratory` VM
+project_name = "my-project-123"
+colab_utils.gcloud.gcloud_auth(project_name)
+
+# set paths
+ROOT = %pwd
+LOG_DIR = os.path.join(ROOT, 'log')
+TRAIN_LOG = os.path.join(LOG_DIR, 'training-run-1')
+
+# save latest checkpoint as a zipfile to a GCS bucket `gs://my-checkpoints/`
+#     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
+#                     e.g. gs://my-checkpoints/training-run-1.1000.zip"
+bucket_name = "my-checkpoints"
+colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, save_events=True, force=False)
+
+
+# restore a zipfile from GCS bucket to a local directory, usually in  
+#     tensorboard `log_dir`
+CHECKPOINTS = os.path.join(LOG_DIR, 'training-run-2')
+zipfile = os.path.basename(TRAIN_LOG)   # training-run-1
+colab_utils.gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHECKPOINTS )
+
+```
+
 """
-
-this script is imcomplete.
-
-in the process of converting ipython `magic` commands to native python to allow for 
-module import.
-
-"""
-
 
 import os
-import requests
-import shutil
-import subprocess
+# import subprocess
 import tensorflow as tf
 from google.colab import auth
 
-def _shell(cmd):
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output = [line for line in p.stdout.read().decode("utf-8").split("\n")]
-    retval = p.wait()
-    if retval==0:
-        return output
-    error = ["error: {}".format(retval)] + [line for line in p.stderr.read().decode("utf-8").split("\n")]
-    return error
+__all__ = [
+  'gcloud_auth', 
+  'save_to_bucket',
+  'load_from_bucket',
+]
 
 
-def google_cloud_auth(project_id):
-  """authorize Google user and set default project
+
+def gcloud_auth(project_id):
+  """authorize access to Google Cloud SDK from `colaboratory` VM and set default project
 
   Args:
     project_id: GC project
+
+  Return:
+    GCS project id
   """
-  # authenticate user and set project 
+  # authenticate user and set project
   auth.authenticate_user()
   # project_id = "my-project-123"
   get_ipython().system_raw("gcloud config set project {}".format(project_id) )
   return project_id
-
 
 
 
@@ -63,14 +113,8 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
   Return:
     bucket path, e.g. "gs://[bucket]/[zip_filename]"
   """
-  bucket_path = "gs://{}/".format(bucket)
-  gsutil_ls = get_ipython().system_raw("gsutil ls {}".format(bucket_path))
-  print(bucket_path, gsutil_ls)
-  # BUG: get_ipython().system_raw) returns None 
-  #     gsutil_ls != !gsutil ls $bucket_path
-  if "BucketNotFoundException" in gsutil_ls[0]:
-    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
-
+  bucket_path = "gs://{}".format(bucket)
+  gsutil_ls = !gsutil ls $bucket_path
   if "BucketNotFoundException" in gsutil_ls[0]:
     raise ValueError("ERROR: GCS bucket not found, path=".format(bucket_path))
 
@@ -84,14 +128,14 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
   
   if global_step:
     zip_filename = "{}.{}.zip".format(os.path.basename(TRAIN_LOG), global_step[0])
-    files = os.listdir(checkpoint_path)
+    files = !ls $checkpoint_path
     filelist = " ".join(files)
     zipfile_path = os.path.join("/tmp", zip_filename)
 
     if save_events:
       # save events for tensorboard
       event_path = os.path.join(train_dir,'events.out.tfevents*')
-      events = os.listdir(event_path)
+      events = !ls $event_path
       if events: 
         filelist += " " + " ".join(events)
 
@@ -99,9 +143,9 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
     if found and not force:
       raise ValueError("WARNING: a zip file already exists, path={}".format(found[0]))
 
-    get_ipython().system_raw("zip {} {}".format(zipfile_path, filelist))
+    !zip  $zipfile_path $filelist
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-    result = get_ipython().system_raw( "gsutil cp {} {}".format(zipfile_path, bucket_path))
+    result = !gsutil cp $zipfile_path $bucket_path
     print("saved: zip={} \n> bucket={} \n> files={}".format(zipfile_path, bucket_path, files))
     return bucket_path
   else:
@@ -137,7 +181,7 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   """
 
   bucket_path = "gs://{}".format(bucket)
-  gsutil_ls = get_ipython().system_raw("gsutil ls {}".format(bucket_path))
+  gsutil_ls = !gsutil ls $bucket_path
   if "BucketNotFoundException" in gsutil_ls[0]:
     raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
 
@@ -153,14 +197,14 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   zip_filepath = os.path.join('/tmp', zip_filename)
   if not os.path.isfile( zip_filepath ):
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-    get_ipython().system_raw( "gsutil cp {} {}".format(bucket_path, zipfile_path))
+    !gsutil cp $bucket_path $zip_filepath
   else:
     print("WARNING: using existing zip file, path={}".format(zip_filepath))
 
-  shutil.rmtree("/tmp/ckpt")
-  os.mkdir("/tmp/ckpt")
-  get_ipython().system_raw( "unzip -j {} -d /tmp/ckpt".format(zip_filepath))
-  get_ipython().system_raw( "cp /tmp/ckpt/* {}".format(train_dir))
+  !rm -rf /tmp/ckpt
+  !mkdir /tmp/ckpt
+  !unzip -j $zip_filepath -d /tmp/ckpt
+  !cp /tmp/ckpt/* $train_dir
   # example filenames:
   #   ['model.ckpt-6000.data-00000-of-00001',
   #   'model.ckpt-6000.index',
@@ -168,7 +212,7 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
   #  append to train_dir/checkpoint
   checkpoint_filename = os.path.join(train_dir, "checkpoint")
-  checkpoint_name = os.listdir("/tmp/ckpt/*.meta")
+  checkpoint_name = !ls /tmp/ckpt/*.meta
   checkpoint_name = checkpoint_name[0][:-5]   # pop() and slice ".meta"
   checkpoint_name = os.path.join(train_dir,os.path.basename(checkpoint_name))
 
@@ -179,8 +223,7 @@ def load_from_bucket(zip_filename, bucket, train_dir):
       f.write(line_entry)
   else:
     # scan checkpoint_filename for checkpoint_name
-    with open(checkpoint_filename, 'r') as f:
-      lines = f.readlines()
+    lines = !cat $checkpoint_filename
     found = [f for f in lines if os.path.basename(checkpoint_name) in f]
     is_checkpoint_found = len(found) > 0
 
@@ -192,81 +235,3 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
   print("restored: bucket={} \n> checkpoint={}".format(bucket_path, checkpoint_name))
   return checkpoint_filename
-
-
-
-
-
-# tested OK
-def install_ngrok(bin_dir="/tmp"):
-  ROOT = bin_dir
-  CWD = os.getcwd()
-  is_grok_avail = os.path.isfile(os.path.join(ROOT,'ngrok'))
-  if is_grok_avail:
-    print("ngrok installed")
-  else:
-    import platform
-    plat = platform.platform() # 'Linux-4.4.64+-x86_64-with-Ubuntu-17.10-artful'
-    if 'x86_64' in plat:
-      
-      os.chdir('/tmp')
-      print("calling wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip ..." )
-      get_ipython().system_raw( "wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip" )
-      print("calling unzip ngrok-stable-linux-amd64.zip ...")
-      get_ipython().system_raw( "unzip ngrok-stable-linux-amd64.zip" )
-      os.rename("ngrok", "{}/ngrok".format(ROOT))
-      os.remove("ngrok-stable-linux-amd64.zip")
-      is_grok_avail = True
-      os.chdir(CWD)
-      if ([f for f in os.listdir() if "ngrok" in f]):
-        print("ngrok installed at: {}/ngrok".format(ROOT))
-      else:
-        raise ValueError( "ERROR: ngrok not found, path=".format(CWD) )
-    else:
-      raise ValueError( "ERROR, ngrok install not configured for this platform, platform={}".format(plat))
-
-    
-# tested OK
-def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp"):
-  """returns a public tensorboard url based on the ngrok package
-
-  see: https://stackoverflow.com/questions/47818822/can-i-use-tensorboard-with-google-colab
-
-  Args:
-    bin_dir: full path to directory for installing ngrok package
-
-  Return:
-    public url for tensorboard
-
-  """
-  install_ngrok(bin_dir)
-    
-  if not tf.gfile.Exists(LOG_DIR):  tf.gfile.MakeDirs(LOG_DIR)
-  
-  # check status of tensorboard and ngrok
-  ps = _shell("ps -ax")
-  is_tensorboard_running = len([f for f in ps if "tensorboard" in f ]) > 0
-  is_ngrok_running = len([f for f in ps if "ngrok" in f ]) > 0
-  print("status: tensorboard={}, ngrok={}".format(is_tensorboard_running, is_ngrok_running))
-
-  if not is_tensorboard_running:
-    get_ipython().system_raw(
-        'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
-        .format(log_dir)
-    )
-    is_tensorboard_running = True
-    
-  if not is_ngrok_running:  
-    #    grok should be installed in /tmp/ngrok
-    get_ipython().system_raw('{}/ngrok http 6006 &'.format(bin_dir))
-    is_ngrok_running = True
-
-  # get tensorboard url
-  # BUG: getting connection refused for HTTPConnectionPool(host='localhost', port=4040)
-  #     on first run, retry works
-  import time
-  time.sleep(3)
-  retval = requests.get('http://localhost:4040/api/tunnels')
-  tensorboard_url = retval.json()['tunnels'][0]['public_url'].strip()
-  print("tensorboard url=", tensorboard_url)
-  return
