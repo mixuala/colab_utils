@@ -1,6 +1,7 @@
 import os
 import requests
 import shutil
+import subprocess
 import tensorflow as tf
 from google.colab import auth
 
@@ -52,8 +53,14 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
   Return:
     bucket path, e.g. "gs://[bucket]/[zip_filename]"
   """
-  bucket_path = "gs://{}".format(bucket)
+  bucket_path = "gs://{}/".format(bucket)
   gsutil_ls = get_ipython().system_raw("gsutil ls {}".format(bucket_path))
+  print(bucket_path, gsutil_ls)
+  # BUG: get_ipython().system_raw) returns None 
+  #     gsutil_ls != !gsutil ls $bucket_path
+  if "BucketNotFoundException" in gsutil_ls[0]:
+    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+
   if "BucketNotFoundException" in gsutil_ls[0]:
     raise ValueError("ERROR: GCS bucket not found, path=".format(bucket_path))
 
@@ -180,27 +187,36 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
 
 
+# tested OK
 def install_ngrok(bin_dir="/tmp"):
   ROOT = bin_dir
   CWD = os.getcwd()
   is_grok_avail = os.path.isfile(os.path.join(ROOT,'ngrok'))
   if is_grok_avail:
-    print("grok installed")
+    print("ngrok installed")
   else:
     import platform
     plat = platform.platform() # 'Linux-4.4.64+-x86_64-with-Ubuntu-17.10-artful'
-    if 'Linux' in plat and 'x86_64' in plat:
+    if 'x86_64' in plat:
       
       os.chdir('/tmp')
+      print("calling wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip ..." )
       get_ipython().system_raw( "wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip" )
+      print("calling unzip ngrok-stable-linux-amd64.zip ...")
       get_ipython().system_raw( "unzip ngrok-stable-linux-amd64.zip" )
-      os.rename("ngrok", ROOT)
+      os.rename("ngrok", "{}/ngrok".format(ROOT))
       os.remove("ngrok-stable-linux-amd64.zip")
       is_grok_avail = True
       os.chdir(CWD)
+      if ([f for f in os.listdir() if "ngrok" in f]):
+        print("ngrok installed at: {}/ngrok".format(ROOT))
+      else:
+        raise ValueError( "ERROR: ngrok not found, path=".format(CWD) )
     else:
       raise ValueError( "ERROR, ngrok install not configured for this platform, platform={}".format(plat))
 
+    
+# tested OK
 def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp"):
   """returns a public tensorboard url based on the ngrok package
 
@@ -214,6 +230,8 @@ def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp"):
 
   """
   install_ngrok(bin_dir)
+    
+  if not tf.gfile.Exists(LOG_DIR):  tf.gfile.MakeDirs(LOG_DIR)
   
   # check status of tensorboard and ngrok
   ps = _shell("ps -ax")
@@ -234,7 +252,11 @@ def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp"):
     is_ngrok_running = True
 
   # get tensorboard url
+  # BUG: getting connection refused for HTTPConnectionPool(host='localhost', port=4040)
+  #     on first run, retry works
+  import time
+  time.sleep(3)
   retval = requests.get('http://localhost:4040/api/tunnels')
-  tensorboard_url = retval.json()['tunnels'][0]['public_url'] 
+  tensorboard_url = retval.json()['tunnels'][0]['public_url'].strip()
   print("tensorboard url=", tensorboard_url)
-  return tensorboard_url
+  return
