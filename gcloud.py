@@ -60,6 +60,7 @@
 """
 
 import os
+import re
 import shutil
 import subprocess
 import tensorflow as tf
