@@ -143,7 +143,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
     # files = !ls $checkpoint_path
     print("archiving checkpoint files={}".format(files))
     filelist = " ".join(files)
-    zipfile_path = os.path.join("/tmp", zip_filename)
+    zip_filepath = os.path.join("/tmp", zip_filename)
 
     if save_events:
       # save events for tensorboard
@@ -165,7 +165,9 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
     # result = !gsutil cp $zipfile_path $bucket_path
     result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
-    print("saved: zip={} \n> bucket={} \n> files={}".format(zipfile_path, bucket_path, files))
+    print("saved: zip={} \n> bucket={} \n> files={}".format(os.path.basename(zip_filepath), 
+                                                      bucket_path, 
+                                                      files))
     return bucket_path
   else:
     print("no checkpoint found, path={}".format(checkpoint_path))
