@@ -61,7 +61,8 @@ colab_utils.gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHEC
 """
 
 import os
-# import subprocess
+import shutil
+import subprocess
 import tensorflow as tf
 from google.colab import auth
 
@@ -71,6 +72,16 @@ __all__ = [
   'load_from_bucket',
 ]
 
+def _shell(cmd):
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output = [line for line in p.stdout.read().decode("utf-8").split("\n")]
+    retval = p.wait()
+    if retval==0:
+        return output
+    error = {'err_code': retval}  
+    if p.stderr and p.stderr.read:
+      error['err_msg]'] = [line for line in p.stderr.read().decode("utf-8").split("\n")]
+    return error
 
 
 def gcloud_auth(project_id):
@@ -89,7 +100,7 @@ def gcloud_auth(project_id):
   return project_id
 
 
-
+# ready to test
 def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False):
   """zip the latest checkpoint files from train_dir and save to GCS bucket
   
@@ -113,45 +124,55 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
   Return:
     bucket path, e.g. "gs://[bucket]/[zip_filename]"
   """
-  bucket_path = "gs://{}".format(bucket)
-  gsutil_ls = !gsutil ls $bucket_path
-  if "BucketNotFoundException" in gsutil_ls[0]:
-    raise ValueError("ERROR: GCS bucket not found, path=".format(bucket_path))
+  bucket_path = "gs://{}/".format(bucket)
+  gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
+  if type(gsutil_ls)==dict and gsutil_ls['err_code']:
+    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
 
-
+  checkpoint_path = train_dir
   if step:
-    checkpoint_path = os.path.join(train_dir,'model.ckpt-{}*'.format(step))
-  else:
-    checkpoint_path = tf.train.latest_checkpoint(train_dir) + "*"
+    checkpoint_pattern = 'model.ckpt-{}*'.format(step)
+  else:  # get latest checkpoint
+    checkpoint_pattern = os.path.basename(tf.train.latest_checkpoint(train_dir))
     
-  global_step = re.findall(".*ckpt-?(\d+).*$",checkpoint_path)
+  global_step = re.findall(".*ckpt-?(\d+).*$",checkpoint_pattern)
   
   if global_step:
     zip_filename = "{}.{}.zip".format(os.path.basename(TRAIN_LOG), global_step[0])
-    files = !ls $checkpoint_path
+    files = [f for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
+    # files = !ls $checkpoint_path
+    print("archiving checkpoint files={}".format(files))
     filelist = " ".join(files)
     zipfile_path = os.path.join("/tmp", zip_filename)
 
     if save_events:
       # save events for tensorboard
-      event_path = os.path.join(train_dir,'events.out.tfevents*')
-      events = !ls $event_path
+      # event_path = os.path.join(train_dir,'events.out.tfevents*')
+      # events = !ls $event_path
+      event_pattern = 'events.out.tfevents'
+      events = [f for f in os.listdir(checkpoint_path) if event_pattern in f]
       if events: 
+        print("archiving event files={}".format(events))
         filelist += " " + " ".join(events)
 
     found = [f for f in gsutil_ls if zip_filename in f]
     if found and not force:
       raise ValueError("WARNING: a zip file already exists, path={}".format(found[0]))
 
-    !zip  $zipfile_path $filelist
+    # !zip  $zipfile_path $filelist
+    print( "writing zip archive to file={} ...".format(zip_filepath))
+    get_ipython().system_raw( "zip {} {}".format(zip_filepath, filelist))
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-    result = !gsutil cp $zipfile_path $bucket_path
+    # result = !gsutil cp $zipfile_path $bucket_path
+    result = = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
     print("saved: zip={} \n> bucket={} \n> files={}".format(zipfile_path, bucket_path, files))
     return bucket_path
   else:
     print("no checkpoint found, path={}".format(checkpoint_path))
 
 
+
+# tested OK
 def load_from_bucket(zip_filename, bucket, train_dir):
   """download and unzip checkpoint files from GCS bucket, save to train_dir
   
@@ -180,9 +201,9 @@ def load_from_bucket(zip_filename, bucket, train_dir):
     all_model_checkpoint_paths: "/my-project/log/my-tensorboard-run/model.ckpt-6000"
   """
 
-  bucket_path = "gs://{}".format(bucket)
-  gsutil_ls = !gsutil ls $bucket_path
-  if "BucketNotFoundException" in gsutil_ls[0]:
+  bucket_path = "gs://{}/".format(bucket)
+  gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
+  if type(gsutil_ls)==dict and gsutil_ls['err_code']:
     raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
 
   bucket_path = "gs://{}/{}".format(bucket, zip_filename)
@@ -197,14 +218,18 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   zip_filepath = os.path.join('/tmp', zip_filename)
   if not os.path.isfile( zip_filepath ):
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-    !gsutil cp $bucket_path $zip_filepath
+    print( "downloading {} ...".format(bucket_path))
+    get_ipython().system_raw( "gsutil cp {} {}".format(bucket_path, zip_filepath))
   else:
     print("WARNING: using existing zip file, path={}".format(zip_filepath))
-
-  !rm -rf /tmp/ckpt
-  !mkdir /tmp/ckpt
-  !unzip -j $zip_filepath -d /tmp/ckpt
-  !cp /tmp/ckpt/* $train_dir
+  
+  if (os.path.isdir("/tmp/ckpt")):
+    shutil.rmtree("/tmp/ckpt")
+  os.mkdir("/tmp/ckpt")
+  print( "unzipping {} ...".format(zip_filepath))
+  get_ipython().system_raw( "unzip -j {} -d /tmp/ckpt".format(zip_filepath))
+  print( "installing checkpoint to {} ...".format(train_dir))
+  get_ipython().system_raw( "mv /tmp/ckpt/* {}".format(train_dir))
   # example filenames:
   #   ['model.ckpt-6000.data-00000-of-00001',
   #   'model.ckpt-6000.index',
@@ -212,7 +237,8 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
   #  append to train_dir/checkpoint
   checkpoint_filename = os.path.join(train_dir, "checkpoint")
-  checkpoint_name = !ls /tmp/ckpt/*.meta
+  print( "appending checkpoint to file={} ...".format(checkpoint_filename))
+  checkpoint_name = [f for f in os.listdir(train_dir) if ".meta" in f]
   checkpoint_name = checkpoint_name[0][:-5]   # pop() and slice ".meta"
   checkpoint_name = os.path.join(train_dir,os.path.basename(checkpoint_name))
 
@@ -223,7 +249,8 @@ def load_from_bucket(zip_filename, bucket, train_dir):
       f.write(line_entry)
   else:
     # scan checkpoint_filename for checkpoint_name
-    lines = !cat $checkpoint_filename
+    with open(checkpoint_filename, 'r') as f:
+      lines = f.readlines()
     found = [f for f in lines if os.path.basename(checkpoint_name) in f]
     is_checkpoint_found = len(found) > 0
 
@@ -235,3 +262,5 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
   print("restored: bucket={} \n> checkpoint={}".format(bucket_path, checkpoint_name))
   return checkpoint_filename
+
+  

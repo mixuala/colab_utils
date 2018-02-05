@@ -91,7 +91,7 @@ def install_ngrok(bin_dir="/tmp"):
 
     
 # tested OK
-def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp" retval=False):
+def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp", retval=False):
   """returns a public tensorboard url based on the ngrok package
   checks if `ngrok` is available, and installs, if necessary, to `bin_dir`
   launches tensorboard, if necessary
