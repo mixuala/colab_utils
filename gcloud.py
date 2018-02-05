@@ -32,11 +32,11 @@ checkpoints to Google Cloud Storage to avoid losing your results.
 ************************************
 ```
 import os
-import colab_utils
+import colab_utils.gcloud
 
 # authorize access to Google Cloud SDK from `colaboratory` VM
 project_name = "my-project-123"
-colab_utils.gcloud.gcloud_auth(project_name)
+gcloud.auth(project_name)
 
 # set paths
 ROOT = %pwd
@@ -47,14 +47,14 @@ TRAIN_LOG = os.path.join(LOG_DIR, 'training-run-1')
 #     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
 #                     e.g. gs://my-checkpoints/training-run-1.1000.zip"
 bucket_name = "my-checkpoints"
-colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, save_events=True, force=False)
+gcloud.save_to_bucket(TRAIN_LOG, bucket_name, save_events=True, force=False)
 
 
 # restore a zipfile from GCS bucket to a local directory, usually in  
 #     tensorboard `log_dir`
 CHECKPOINTS = os.path.join(LOG_DIR, 'training-run-2')
 zipfile = os.path.basename(TRAIN_LOG)   # training-run-1
-colab_utils.gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHECKPOINTS )
+gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHECKPOINTS )
 
 ```
 
@@ -67,7 +67,7 @@ import tensorflow as tf
 from google.colab import auth
 
 __all__ = [
-  'gcloud_auth', 
+  'auth', 
   'save_to_bucket',
   'load_from_bucket',
 ]
@@ -84,7 +84,7 @@ def _shell(cmd):
     return error
 
 
-def gcloud_auth(project_id):
+def auth(project_id):
   """authorize access to Google Cloud SDK from `colaboratory` VM and set default project
 
   Args:
@@ -164,7 +164,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
     get_ipython().system_raw( "zip {} {}".format(zip_filepath, filelist))
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
     # result = !gsutil cp $zipfile_path $bucket_path
-    result = = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
+    result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
     print("saved: zip={} \n> bucket={} \n> files={}".format(zipfile_path, bucket_path, files))
     return bucket_path
   else:

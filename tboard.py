@@ -23,7 +23,7 @@
   ************************************
   ```
   import os
-  import colab_utils
+  import colab_utils.tboard
 
   # set paths
   ROOT = %pwd
@@ -31,7 +31,7 @@
 
   # will install `ngrok`, if necessary
   # will create `log_dir` if path does not exist
-  colab_utils.tensorboard.launch_tensorboard( bin_dir=ROOT, log_dir=LOG_DIR )
+  tboard.launch_tensorboard( bin_dir=ROOT, log_dir=LOG_DIR )
   ```
 
 """
