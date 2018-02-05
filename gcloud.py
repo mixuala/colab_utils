@@ -138,7 +138,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
   global_step = re.findall(".*ckpt-?(\d+).*$",checkpoint_pattern)
   
   if global_step:
-    zip_filename = "{}.{}.zip".format(os.path.basename(TRAIN_LOG), global_step[0])
+    zip_filename = "{}.{}.zip".format(os.path.basename(train_dir), global_step[0])
     files = [f for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
     # files = !ls $checkpoint_path
     print("archiving checkpoint files={}".format(files))
