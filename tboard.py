@@ -18,6 +18,8 @@
   `tensorboard`. This script helps you launches tensorboard on the `colaboratory` VM and 
   uses `ngrok` to create a secure introspective tunnel to access tensorboard via public URL.
 
+  see: https://stackoverflow.com/questions/47818822/can-i-use-tensorboard-with-google-colab
+
   ************************************
   * A simple working script *
   ************************************
@@ -63,9 +65,9 @@ def install_ngrok(bin_dir="/tmp"):
   Args:
     bin_dir: full path for the target directory for the `ngrok` binary
   """
-  ROOT = bin_dir
+  TARGET_DIR = bin_dir
   CWD = os.getcwd()
-  is_grok_avail = os.path.isfile(os.path.join(ROOT,'ngrok'))
+  is_grok_avail = os.path.isfile(os.path.join(TARGET_DIR,'ngrok'))
   if is_grok_avail:
     print("ngrok installed")
   else:
@@ -78,17 +80,19 @@ def install_ngrok(bin_dir="/tmp"):
       get_ipython().system_raw( "wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip" )
       print("calling unzip ngrok-stable-linux-amd64.zip ...")
       get_ipython().system_raw( "unzip ngrok-stable-linux-amd64.zip" )
-      os.rename("ngrok", "{}/ngrok".format(ROOT))
+      os.rename("ngrok", "{}/ngrok".format(TARGET_DIR))
       os.remove("ngrok-stable-linux-amd64.zip")
-      is_grok_avail = True
-      os.chdir(CWD)
-      if ([f for f in os.listdir() if "ngrok" in f]):
-        print("ngrok installed at: {}/ngrok".format(ROOT))
+      is_grok_avail = os.path.isfile(os.path.join(TARGET_DIR,'ngrok'))
+      os.chdir(TARGET_DIR)
+      if is_grok_avail:
+        print("ngrok installed. path={}".format(os.path.join(TARGET_DIR,'ngrok')))
       else:
-        raise ValueError( "ERROR: ngrok not found, path=".format(CWD) )
+        # ValueError: ERROR: ngrok not found, path=
+        raise ValueError( "ERROR: ngrok not found, path=".format(TARGET_DIR) )
     else:
       raise ValueError( "ERROR, ngrok install not configured for this platform, platform={}".format(plat))
-
+    os.chdir(CWD)
+    return
     
 # tested OK
 def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp", retval=False):
