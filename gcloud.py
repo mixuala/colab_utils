@@ -36,7 +36,7 @@ import colab_utils.gcloud
 
 # authorize access to Google Cloud SDK from `colaboratory` VM
 project_name = "my-project-123"
-gcloud.auth(project_name)
+gcloud.gcloud_auth(project_name)
 
 # set paths
 ROOT = %pwd
@@ -67,7 +67,7 @@ import tensorflow as tf
 from google.colab import auth
 
 __all__ = [
-  'auth', 
+  'gcloud_auth', 
   'save_to_bucket',
   'load_from_bucket',
 ]
@@ -84,7 +84,7 @@ def _shell(cmd):
     return error
 
 
-def auth(project_id):
+def gcloud_auth(project_id):
   """authorize access to Google Cloud SDK from `colaboratory` VM and set default project
 
   Args:
