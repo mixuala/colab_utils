@@ -110,7 +110,7 @@ def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp", retval=False):
   """
   install_ngrok(bin_dir)
     
-  if not tf.gfile.Exists(LOG_DIR):  tf.gfile.MakeDirs(LOG_DIR)
+  if not tf.gfile.Exists(log_dir):  tf.gfile.MakeDirs(log_dir)
   
   # check status of tensorboard and ngrok
   ps = _shell("ps -ax")
