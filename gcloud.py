@@ -230,8 +230,6 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   global_step = re.findall(".*\.(\d+)\.zip$",zip_filename)  
   if global_step:
     checkpoint_name = os.path.join(train_dir,"model.ckpt-{}".format(global_step[0]))
-    if not os.path.isfile(checkpoint_name):
-      raise RuntimeError("cannot get find checkpoint file, path={}".format(checkpoint_name))
   else:
     raise RuntimeError("cannot get checkpoint from zip_filename, path={}".format(zip_filename))
 
