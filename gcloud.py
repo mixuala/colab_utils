@@ -222,12 +222,18 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   #   'model.ckpt-6000.index',
   #   'model.ckpt-6000.meta']
 
-  #  append to train_dir/checkpoint
+  # append to $train_dir/checkpoint
+  # example: checkpoint_name="{train_dir}/model.ckpt-{global-step}"
   checkpoint_filename = os.path.join(train_dir, "checkpoint")
   print( "appending checkpoint to file={} ...".format(checkpoint_filename))
-  checkpoint_name = [f for f in os.listdir(train_dir) if ".meta" in f]
-  checkpoint_name = checkpoint_name[0][:-5]   # pop() and slice ".meta"
-  checkpoint_name = os.path.join(train_dir,os.path.basename(checkpoint_name))
+
+  global_step = re.findall(".*\.(\d+)\.zip$",zip_filename)  
+  if global_step:
+    checkpoint_name = os.path.join(train_dir,"model.ckpt-{}".format(global_step[0]))
+    if not os.path.isfile(checkpoint_name):
+      raise RuntimeError("cannot get find checkpoint file, path={}".format(checkpoint_name))
+  else:
+    raise RuntimeError("cannot get checkpoint from zip_filename, path={}".format(zip_filename))
 
   if not os.path.isfile(checkpoint_filename):
     with open(checkpoint_filename, 'w') as f:
