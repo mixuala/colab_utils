@@ -101,29 +101,6 @@ def gcloud_auth(project_id):
 
 
 # ready to test
-def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False):
-  """zip the latest checkpoint files from train_dir and save to GCS bucket
-  
-  NOTE: authorize notebook before use:
-    ```
-    # authenticate user and set project
-    from google.colab import auth
-    auth.authenticate_user()
-    project_id = "my-project-123"
-    !gcloud config set project {project_id}
-    ```
-
-  Args:
-    train_dir: a diretory path from which to save the checkpoint files, 
-                usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"                
-    bucket: "gs://[bucket]"
-    step: global_step checkpoint number
-    save_events: inclue tfevents files from Summary Ops in zip file
-    force: overwrite existing bucket file
-
-  Return:
-    bucket path, e.g. "gs://[bucket]/[zip_filename]"
-  """
   bucket_path = "gs://{}/".format(bucket)
   gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
   if type(gsutil_ls)==dict and gsutil_ls['err_code']:
@@ -139,7 +116,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
   
   if global_step:
     zip_filename = "{}.{}.zip".format(os.path.basename(train_dir), global_step[0])
-    files = [f for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
+    files = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
     # files = !ls $checkpoint_path
     print("archiving checkpoint files={}".format(files))
     filelist = " ".join(files)
@@ -157,14 +134,23 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=False, force=False)
 
     found = [f for f in gsutil_ls if zip_filename in f]
     if found and not force:
-      raise ValueError("WARNING: a zip file already exists, path={}".format(found[0]))
+      raise Warning("WARNING: a zip file already exists, path={}".format(found[0]))
 
-    # !zip  $zipfile_path $filelist
     print( "writing zip archive to file={} ...".format(zip_filepath))
-    get_ipython().system_raw( "zip {} {}".format(zip_filepath, filelist))
+    result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, filelist))
+    
+    !zip -D $zip_filepath $filelist
+    if not os.path.isfile(zip_filepath):
+      raise RuntimeError("ERROR: zip file not created, path={}".format(zip_filepath))
+
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
     # result = !gsutil cp $zipfile_path $bucket_path
+    print( "uploading zip archive to bucket={} ...".format(bucket_path))
     result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
+        
+    if type(result)==dict and result['err_code']:
+      raise RuntimeError("ERROR: error uploading to gcloud, bucket={}".format(bucket_path))
+    
     print("saved: zip={} \n> bucket={} \n> files={}".format(os.path.basename(zip_filepath), 
                                                       bucket_path, 
                                                       files))

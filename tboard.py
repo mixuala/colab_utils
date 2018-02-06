@@ -90,7 +90,7 @@ def install_ngrok(bin_dir="/tmp"):
         # ValueError: ERROR: ngrok not found, path=
         raise ValueError( "ERROR: ngrok not found, path=".format(TARGET_DIR) )
     else:
-      raise ValueError( "ERROR, ngrok install not configured for this platform, platform={}".format(plat))
+      raise NotImplementedError( "ERROR, ngrok install not configured for this platform, platform={}".format(plat))
     os.chdir(CWD)
     return
     
