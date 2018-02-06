@@ -47,7 +47,7 @@
   #     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
   #                     e.g. gs://my-checkpoints/training-run-1.1000.zip"
   bucket_name = "my-checkpoints"
-  colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, save_events=True, force=False)
+  colab_utils.gcloud.push_to_bucket(TRAIN_LOG, bucket_name, save_events=True, force=False)
 
 
   # restore a zipfile from GCS bucket to a local directory, usually in  
@@ -68,7 +68,7 @@ import tensorflow as tf
 __all__ = [
   'gcloud_auth', 
   'load_from_bucket',
-  'save_to_bucket',
+  'push_to_bucket',
 ]
 
 def _shell(cmd):
@@ -197,7 +197,7 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   
 
 # tested OK
-def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
+def push_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
   """zip the latest checkpoint files from train_dir and save to GCS bucket
   
   NOTE: authorize notebook before use:
@@ -276,5 +276,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
     return bucket_path
   else:
     print("no checkpoint found, path={}".format(checkpoint_path))
+    
+  return
 
 
