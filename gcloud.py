@@ -101,6 +101,29 @@ def gcloud_auth(project_id):
 
 
 # ready to test
+def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
+  """zip the latest checkpoint files from train_dir and save to GCS bucket
+  
+  NOTE: authorize notebook before use:
+    ```
+    # authenticate user and set project
+    from google.colab import auth
+    auth.authenticate_user()
+    project_id = "my-project-123"
+    !gcloud config set project {project_id}
+    ```
+
+  Args:
+    train_dir: a diretory path from which to save the checkpoint files, 
+                usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"                
+    bucket: "gs://[bucket]"
+    step: global_step checkpoint number
+    save_events: inclue tfevents files from Summary Ops in zip file
+    force: overwrite existing bucket file
+
+  Return:
+    bucket path, e.g. "gs://[bucket]/[zip_filename]"
+  """
   bucket_path = "gs://{}/".format(bucket)
   gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
   if type(gsutil_ls)==dict and gsutil_ls['err_code']:
