@@ -247,7 +247,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
       # event_path = os.path.join(train_dir,'events.out.tfevents*')
       # events = !ls $event_path
       event_pattern = 'events.out.tfevents'
-      events = [f for f in os.listdir(checkpoint_path) if event_pattern in f]
+      events = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if event_pattern in f]
       if events: 
         print("archiving event files={}".format(events))
         filelist += " " + " ".join(events)
