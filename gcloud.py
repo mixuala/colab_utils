@@ -67,8 +67,8 @@ import tensorflow as tf
 
 __all__ = [
   'gcloud_auth', 
+  'load_from_bucket',
   'save_to_bucket',
-  'load_from_bucket'
 ]
 
 def _shell(cmd):
@@ -98,89 +98,6 @@ def gcloud_auth(project_id):
   # project_id = "my-project-123"
   get_ipython().system_raw("gcloud config set project {}".format(project_id) )
   return project_id
-
-
-# ready to test
-def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
-  """zip the latest checkpoint files from train_dir and save to GCS bucket
-  
-  NOTE: authorize notebook before use:
-    ```
-    # authenticate user and set project
-    from google.colab import auth
-    auth.authenticate_user()
-    project_id = "my-project-123"
-    !gcloud config set project {project_id}
-    ```
-
-  Args:
-    train_dir: a diretory path from which to save the checkpoint files, 
-                usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"                
-    bucket: "gs://[bucket]"
-    step: global_step checkpoint number
-    save_events: inclue tfevents files from Summary Ops in zip file
-    force: overwrite existing bucket file
-
-  Return:
-    bucket path, e.g. "gs://[bucket]/[zip_filename]"
-  """
-  bucket_path = "gs://{}/".format(bucket)
-  gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
-  if type(gsutil_ls)==dict and gsutil_ls['err_code']:
-    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
-
-  checkpoint_path = train_dir
-  if step:
-    checkpoint_pattern = 'model.ckpt-{}*'.format(step)
-  else:  # get latest checkpoint
-    checkpoint_pattern = os.path.basename(tf.train.latest_checkpoint(train_dir))
-    
-  global_step = re.findall(".*ckpt-?(\d+).*$",checkpoint_pattern)
-  
-  if global_step:
-    zip_filename = "{}.{}.zip".format(os.path.basename(train_dir), global_step[0])
-    files = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
-    # files = !ls $checkpoint_path
-    print("archiving checkpoint files={}".format(files))
-    filelist = " ".join(files)
-    zip_filepath = os.path.join("/tmp", zip_filename)
-
-    if save_events:
-      # save events for tensorboard
-      # event_path = os.path.join(train_dir,'events.out.tfevents*')
-      # events = !ls $event_path
-      event_pattern = 'events.out.tfevents'
-      events = [f for f in os.listdir(checkpoint_path) if event_pattern in f]
-      if events: 
-        print("archiving event files={}".format(events))
-        filelist += " " + " ".join(events)
-
-    found = [f for f in gsutil_ls if zip_filename in f]
-    if found and not force:
-      raise Warning("WARNING: a zip file already exists, path={}".format(found[0]))
-
-    print( "writing zip archive to file={} ...".format(zip_filepath))
-    result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, filelist))
-    
-    if not os.path.isfile(zip_filepath):
-      raise RuntimeError("ERROR: zip file not created, path={}".format(zip_filepath))
-
-    bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-    # result = !gsutil cp $zipfile_path $bucket_path
-    print( "uploading zip archive to bucket={} ...".format(bucket_path))
-    result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
-        
-    if type(result)==dict and result['err_code']:
-      raise RuntimeError("ERROR: error uploading to gcloud, bucket={}".format(bucket_path))
-    
-    print("saved: zip={} \n> bucket={} \n> files={}".format(os.path.basename(zip_filepath), 
-                                                      bucket_path, 
-                                                      files))
-    return bucket_path
-  else:
-    print("no checkpoint found, path={}".format(checkpoint_path))
-
-
 
 # tested OK
 def load_from_bucket(zip_filename, bucket, train_dir):
@@ -278,3 +195,86 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   return checkpoint_filename
 
   
+
+# tested OK
+def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
+  """zip the latest checkpoint files from train_dir and save to GCS bucket
+  
+  NOTE: authorize notebook before use:
+    ```
+    # authenticate user and set project
+    from google.colab import auth
+    auth.authenticate_user()
+    project_id = "my-project-123"
+    !gcloud config set project {project_id}
+    ```
+
+  Args:
+    train_dir: a diretory path from which to save the checkpoint files, 
+                usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"                
+    bucket: "gs://[bucket]"
+    step: global_step checkpoint number
+    save_events: inclue tfevents files from Summary Ops in zip file
+    force: overwrite existing bucket file
+
+  Return:
+    bucket path, e.g. "gs://[bucket]/[zip_filename]"
+  """
+  
+  bucket_path = "gs://{}/".format(bucket)
+  gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
+  if type(gsutil_ls)==dict and gsutil_ls['err_code']:
+    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+
+  checkpoint_path = train_dir
+  if step:
+    checkpoint_pattern = 'model.ckpt-{}*'.format(step)
+  else:  # get latest checkpoint
+    checkpoint_pattern = os.path.basename(tf.train.latest_checkpoint(train_dir))
+    
+  global_step = re.findall(".*ckpt-?(\d+).*$",checkpoint_pattern)
+  
+  if global_step:
+    zip_filename = "{}.{}.zip".format(os.path.basename(train_dir), global_step[0])
+    files = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
+    # files = !ls $checkpoint_path
+    print("archiving checkpoint files={}".format(files))
+    filelist = " ".join(files)
+    zip_filepath = os.path.join("/tmp", zip_filename)
+
+    if save_events:
+      # save events for tensorboard
+      # event_path = os.path.join(train_dir,'events.out.tfevents*')
+      # events = !ls $event_path
+      event_pattern = 'events.out.tfevents'
+      events = [f for f in os.listdir(checkpoint_path) if event_pattern in f]
+      if events: 
+        print("archiving event files={}".format(events))
+        filelist += " " + " ".join(events)
+
+    found = [f for f in gsutil_ls if zip_filename in f]
+    if found and not force:
+      raise Warning("WARNING: a zip file already exists, path={}".format(found[0]))
+
+    print( "writing zip archive to file={} ...".format(zip_filepath))
+    result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, filelist))
+    
+    if not os.path.isfile(zip_filepath):
+      raise RuntimeError("ERROR: zip file not created, path={}".format(zip_filepath))
+
+    bucket_path = "gs://{}/{}".format(bucket, zip_filename)
+    # result = !gsutil cp $zipfile_path $bucket_path
+    print( "uploading zip archive to bucket={} ...".format(bucket_path))
+    result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
+        
+    if type(result)==dict and result['err_code']:
+      raise RuntimeError("ERROR: error uploading to gcloud, bucket={}".format(bucket_path))
+    
+    print("saved: zip={} \n> bucket={} \n> files={}".format(os.path.basename(zip_filepath), 
+                                                      bucket_path, 
+                                                      files))
+    return bucket_path
+  else:
+    print("no checkpoint found, path={}".format(checkpoint_path))
+
+
