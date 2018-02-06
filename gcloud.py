@@ -139,7 +139,6 @@ def gcloud_auth(project_id):
     print( "writing zip archive to file={} ...".format(zip_filepath))
     result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, filelist))
     
-    !zip -D $zip_filepath $filelist
     if not os.path.isfile(zip_filepath):
       raise RuntimeError("ERROR: zip file not created, path={}".format(zip_filepath))
 

@@ -142,4 +142,5 @@ def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp", retval=False):
   retval = requests.get('http://localhost:4040/api/tunnels')
   tensorboard_url = retval.json()['tunnels'][0]['public_url'].strip()
   print("tensorboard url=", tensorboard_url)
-  return tensorboard_url if retval else None
+  if retval:
+    return tensorboard_url
