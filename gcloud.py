@@ -369,11 +369,18 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
   
   if global_step:
     zip_filename = "{}.{}.zip".format(os.path.basename(train_dir), global_step[0])
+    zip_filepath = os.path.join("/tmp", zip_filename)
+
+    # check if gcs file already exists
+    found = [f for f in bucket_files if zip_filename in f]
+    if found and not force:
+      raise RuntimeError("WARNING: a zip file already exists, path={}. use force=True to overwrite".format(found[0]))
+    
     files = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
     # files = !ls $checkpoint_path
     print("archiving checkpoint files={}".format(files))
     filelist = files
-    zip_filepath = os.path.join("/tmp", zip_filename)
+    
 
     if save_events:
       # save events for tensorboard
@@ -385,9 +392,6 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
         print("archiving event files={}".format(events))
         filelist = files + events
 
-    found = [f for f in bucket_files if zip_filename in f]
-    if found and not force:
-      raise Warning("WARNING: a zip file already exists, path={}".format(found[0]))
 
     print( "writing zip archive to, count={}, file={} ...".format(len(filelist), zip_filepath))
     result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, " ".join(filelist)))
