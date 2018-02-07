@@ -43,6 +43,8 @@
   LOG_DIR = os.path.join(ROOT, 'log')
   TRAIN_LOG = os.path.join(LOG_DIR, 'training-run-1')
 
+  gsutil_config_project(project_name)
+
   # save latest checkpoint as a zipfile to a GCS bucket `gs://my-checkpoints/`
   #     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
   #                     e.g. gs://my-checkpoints/training-run-1.1000.zip"
@@ -58,29 +60,113 @@
   ```
 
 """
-
 import os
 import re
 import shutil
 import subprocess
+
+from apiclient.http import MediaIoBaseDownload
+from google.cloud import storage, exceptions
 import tensorflow as tf
 
 __all__ = [
   'gcloud_auth', 
+  'gsutil_config_project',
   'load_from_bucket',
   'save_to_bucket',
 ]
 
-def _shell(cmd):
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output = [line for line in p.stdout.read().decode("utf-8").split("\n")]
-    retval = p.wait()
-    if retval==0:
-        return output
-    error = {'err_code': retval}  
-    if p.stderr and p.stderr.read:
-      error['err_msg]'] = [line for line in p.stderr.read().decode("utf-8").split("\n")]
-    return error
+__gcs_client__ = None
+
+# def _shell(cmd):
+#     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+#     output = [line for line in p.stdout.read().decode("utf-8").split("\n")]
+#     retval = p.wait()
+#     if retval==0:
+#         return output
+#     error = {'err_code': retval}  
+#     if p.stderr and p.stderr.read:
+#       error['err_msg]'] = [line for line in p.stderr.read().decode("utf-8").split("\n")]
+#     return error
+
+
+
+_gcs_client = None
+
+def gsutil_config_project(project_id):
+  __gcs_client__ = storage.Client( project=project_id )
+  return __gcs_client__
+
+def gsutil_ls(bucket_name, filter=None, project_id=None, as ):
+  if project_id is None: 
+    client = __gcs_client__
+  else: 
+    client = storage.Client( project=project_id )
+
+  try:
+    client = storage.Client( project=project_id )
+    bucket_path = "gs://{}/".format(bucket_name)
+    bucket = client.get_bucket(bucket_name)
+    files = ["{}{}".format(bucket_path,f.name) for f in bucket.list_blobs() ]
+    if filter:
+      files = [f for f in files if filter in f]
+    # print(files)
+    return files
+
+  except exceptions.NotFound:
+    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+  except Exception as e:
+    print(e)
+
+def gsutil_download(gcs_path, local_path, project_id=None, force=False):
+  bucket_path, filename = os.path.split(gcs_path)
+  bucket_name = os.path.basename(bucket_path)
+  if os.path.isfile(local_path) and not force:
+    raise Warning("WARNING: local file already exists, use force=True. path={}".format(local_path))
+  
+  if project_id is None: 
+    client = __gcs_client__
+  else: 
+    client = storage.Client( project=project_id )
+
+  try:
+    client = storage.Client( project=project_id )
+    bucket = client.get_bucket(bucket_name)
+    blob = storage.Blob(filename, bucket)
+    print("downloading file={} ...".format(gcs_path))
+    blob.download_to_filename(local_path)
+    return local_path
+
+  except exceptions.NotFound:
+    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+  except Exception as e:
+    print(e)
+
+
+def gsutil_upload(local_path, gcs_path, project_id=None, force=False):
+  bucket_path, filename = os.path.split(gcs_path)
+  bucket_name = os.path.basename(bucket_path)
+  
+  if project_id is None: 
+    client = __gcs_client__
+  else: 
+    client = storage.Client( project=project_id )
+
+  try:
+    if gsutil_ls(bucket_name, filter=filename, project_id=project_id) and not force:
+      raise Warning("WARNING: gcs file already exists, use force=True. path={}".format(local_path))
+
+    client = storage.Client( project=project_id )
+    bucket = client.get_bucket(bucket_name)
+    blob = storage.Blob(filename, bucket)
+    print("uploading file={} ...".format(gcs_path))
+    blob.upload_from_filename(local_path)
+    return gcs_path
+
+  except exceptions.NotFound:
+    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+  except Exception as e:
+    print(e)
 
 
 def gcloud_auth(project_id):
@@ -97,6 +183,7 @@ def gcloud_auth(project_id):
   auth.authenticate_user()
   # project_id = "my-project-123"
   get_ipython().system_raw("gcloud config set project {}".format(project_id) )
+  gsutil_config_project(project_id)  # set for google.cloud.storage
   return project_id
 
 # tested OK
@@ -129,12 +216,11 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   """
 
   bucket_path = "gs://{}/".format(bucket)
-  gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
-  if type(gsutil_ls)==dict and gsutil_ls['err_code']:
-    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+  # files = _shell("gsutil ls {}".format(bucket_path))
+  files = gsutil_ls(bucket_path)
 
   bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-  found = [f for f in gsutil_ls if zip_filename in f]
+  found = [f for f in files if zip_filename in f]
   if not found:
     raise ValueError( "ERROR: zip file not found in bucket, path={}".format(bucket_path))
 
@@ -146,7 +232,8 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   if not os.path.isfile( zip_filepath ):
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
     print( "downloading {} ...".format(bucket_path))
-    get_ipython().system_raw( "gsutil cp {} {}".format(bucket_path, zip_filepath))
+    # get_ipython().system_raw( "gsutil cp {} {}".format(bucket_path, zip_filepath))
+    result = gsutil_download(bucket_path, zip_filepath)
   else:
     print("WARNING: using existing zip file, path={}".format(zip_filepath))
   
@@ -222,9 +309,8 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
   """
   
   bucket_path = "gs://{}/".format(bucket)
-  gsutil_ls = _shell("gsutil ls {}".format(bucket_path))
-  if type(gsutil_ls)==dict and gsutil_ls['err_code']:
-    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+  # files = _shell("gsutil ls {}".format(bucket_path))
+  files = gsutil_ls(bucket_path)
 
   checkpoint_path = train_dir
   if step:
@@ -252,7 +338,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
         print("archiving event files={}".format(events))
         filelist += " " + " ".join(events)
 
-    found = [f for f in gsutil_ls if zip_filename in f]
+    found = [f for f in files if zip_filename in f]
     if found and not force:
       raise Warning("WARNING: a zip file already exists, path={}".format(found[0]))
 
@@ -263,9 +349,9 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
       raise RuntimeError("ERROR: zip file not created, path={}".format(zip_filepath))
 
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-    # result = !gsutil cp $zipfile_path $bucket_path
     print( "uploading zip archive to bucket={} ...".format(bucket_path))
-    result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
+    # result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
+    result = gsutil_upload(zip_filepath, bucket_path)
         
     if type(result)==dict and result['err_code']:
       raise RuntimeError("ERROR: error uploading to gcloud, bucket={}".format(bucket_path))
