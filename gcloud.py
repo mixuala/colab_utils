@@ -326,7 +326,8 @@ def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
     raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
   latest_checkpoint = [f for f in checkpoints if latest_step.astype(str) in f ]
   # print(latest_checkpoint)
-  return load_from_bucket(latest_checkpoint[0], bucket, train_dir)
+  zip_filename = os.path.basename(latest_checkpoint[0])
+  return load_from_bucket(zip_filename, bucket, train_dir)
 
     
 
