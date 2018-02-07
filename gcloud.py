@@ -393,7 +393,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
         filelist = files + events
 
 
-    print( "writing zip archive to, count={}, file={} ...".format(len(filelist), zip_filepath))
+    print( "writing zip archive to, file={}, count={} ...".format(len(filelist), zip_filepath))
     result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, " ".join(filelist)))
     
     if not os.path.isfile(zip_filepath):
