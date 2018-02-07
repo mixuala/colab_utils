@@ -117,7 +117,7 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
     raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
   except Exception as e:
     print(e)
-    
+
 
 def gsutil_download(gcs_path, local_path, project_id=None, force=False):
   bucket_path, filename = os.path.split(gcs_path)
@@ -216,9 +216,9 @@ def load_from_bucket(zip_filename, bucket, train_dir):
     all_model_checkpoint_paths: "/my-project/log/my-tensorboard-run/model.ckpt-6000"
   """
 
-  bucket_path = "gs://{}/".format(bucket)
+  # bucket_path = "gs://{}/".format(bucket)
   # files = _shell("gsutil ls {}".format(bucket_path))
-  files = gsutil_ls(bucket_path)
+  files = gsutil_ls(bucket)
 
   bucket_path = "gs://{}/{}".format(bucket, zip_filename)
   found = [f for f in files if zip_filename in f]
@@ -309,9 +309,9 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
     bucket path, e.g. "gs://[bucket]/[zip_filename]"
   """
   
-  bucket_path = "gs://{}/".format(bucket)
+  # bucket_path = "gs://{}/".format(bucket)
   # files = _shell("gsutil ls {}".format(bucket_path))
-  files = gsutil_ls(bucket_path)
+  files = gsutil_ls(bucket)
 
   checkpoint_path = train_dir
   if step:
