@@ -76,7 +76,18 @@ __all__ = [
   'save_to_bucket',
 ]
 
-__project_id__ = None
+class GcsClient(object):
+  """Helper class to persist project between google cloud storage calls """
+  client=None
+
+  @staticmethod
+  GcsClient.project(project_id=None):
+    if project_id:  
+      GcsClient.client = storage.Client( project=project_id )
+    if GcsClient.client is None or not GcsClient.client.project:
+      raise RuntimeError("Google Cloud Project is undefined. use gsutil_config_project(project_id)")
+    return GcsClient.client.project  
+
 
 # def _shell(cmd):
 #     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -91,21 +102,19 @@ __project_id__ = None
 
 
 def gsutil_config_project(project_id=None):
-  if project_id:  
-    __project_id__ = project_id
-  return __project_id__
+  return GcsClient.project(project_id)
 
 
 
 def gsutil_ls(bucket_name, filter=None, project_id=None):
-  if project_id is None: 
-    project_id = __project_id__
-    if project_id is None:
-      raise RuntimeError("Google Cloud Project is undefined. use gsutil_config_project(project_id)")
+  if project_id is None:
+    client = GcsClient.client
+  else:
+    client = storage.Client( project=project_id )
 
 
   try:
-    client = storage.Client( project=project_id )
+    # client = storage.Client( project=project_id )
     bucket_path = "gs://{}/".format(bucket_name)
     bucket = client.get_bucket(bucket_name)
     files = ["{}{}".format(bucket_path,f.name) for f in bucket.list_blobs() ]
@@ -127,13 +136,13 @@ def gsutil_download(gcs_path, local_path, project_id=None, force=False):
   if os.path.isfile(local_path) and not force:
     raise Warning("WARNING: local file already exists, use force=True. path={}".format(local_path))
   
-  if project_id is None: 
-    project_id = __project_id__
-    if project_id is None:
-      raise RuntimeError("Google Cloud Project is undefined. use gsutil_config_project(project_id)")
+  if project_id is None:
+    client = GcsClient.client
+  else:
+    client = storage.Client( project=project_id )
 
   try:
-    client = storage.Client( project=project_id )
+    # client = storage.Client( project=project_id )
     bucket = client.get_bucket(bucket_name)
     blob = storage.Blob(filename, bucket)
     print("downloading file={} ...".format(gcs_path))
@@ -152,16 +161,16 @@ def gsutil_upload(local_path, gcs_path, project_id=None, force=False):
   bucket_path, filename = os.path.split(gcs_path)
   bucket_name = os.path.basename(bucket_path)
   
-  if project_id is None: 
-    project_id = __project_id__
-    if project_id is None:
-      raise RuntimeError("Google Cloud Project is undefined. use gsutil_config_project(project_id)")
+  if project_id is None:
+    client = GcsClient.client
+  else:
+    client = storage.Client( project=project_id )
 
   try:
     if gsutil_ls(bucket_name, filter=filename, project_id=project_id) and not force:
       raise Warning("WARNING: gcs file already exists, use force=True. path={}".format(local_path))
 
-    client = storage.Client( project=project_id )
+    # client = storage.Client( project=project_id )
     bucket = client.get_bucket(bucket_name)
     blob = storage.Blob(filename, bucket)
     print("uploading file={} ...".format(gcs_path))
