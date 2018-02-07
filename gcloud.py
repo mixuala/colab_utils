@@ -90,7 +90,7 @@ __project_id__ = None
 #     return error
 
 
-def gsutil_config_project(project_id, project_id=None):
+def gsutil_config_project(project_id=None):
   if project_id:  
     __project_id__ = project_id
   return __project_id__
