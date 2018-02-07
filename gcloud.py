@@ -93,9 +93,13 @@ __gcs_client__ = None
 
 _gcs_client = None
 
+
+
 def gsutil_config_project(project_id):
   __gcs_client__ = storage.Client( project=project_id )
   return __gcs_client__
+
+
 
 def gsutil_ls(bucket_name, filter=None, project_id=None):
   if project_id is None: 
@@ -104,7 +108,7 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
     client = storage.Client( project=project_id )
 
   try:
-    client = storage.Client( project=project_id )
+    # client = storage.Client( project=project_id )
     bucket_path = "gs://{}/".format(bucket_name)
     bucket = client.get_bucket(bucket_name)
     files = ["{}{}".format(bucket_path,f.name) for f in bucket.list_blobs() ]
@@ -119,6 +123,7 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
     print(e)
 
 
+
 def gsutil_download(gcs_path, local_path, project_id=None, force=False):
   bucket_path, filename = os.path.split(gcs_path)
   bucket_name = os.path.basename(bucket_path)
@@ -131,7 +136,7 @@ def gsutil_download(gcs_path, local_path, project_id=None, force=False):
     client = storage.Client( project=project_id )
 
   try:
-    client = storage.Client( project=project_id )
+    # client = storage.Client( project=project_id )
     bucket = client.get_bucket(bucket_name)
     blob = storage.Blob(filename, bucket)
     print("downloading file={} ...".format(gcs_path))
@@ -142,6 +147,8 @@ def gsutil_download(gcs_path, local_path, project_id=None, force=False):
     raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
   except Exception as e:
     print(e)
+
+
 
 
 def gsutil_upload(local_path, gcs_path, project_id=None, force=False):
@@ -157,7 +164,7 @@ def gsutil_upload(local_path, gcs_path, project_id=None, force=False):
     if gsutil_ls(bucket_name, filter=filename, project_id=project_id) and not force:
       raise Warning("WARNING: gcs file already exists, use force=True. path={}".format(local_path))
 
-    client = storage.Client( project=project_id )
+    # client = storage.Client( project=project_id )
     bucket = client.get_bucket(bucket_name)
     blob = storage.Blob(filename, bucket)
     print("uploading file={} ...".format(gcs_path))
@@ -218,9 +225,9 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
   # bucket_path = "gs://{}/".format(bucket)
   # files = _shell("gsutil ls {}".format(bucket_path))
-  files = gsutil_ls(bucket)
-
   bucket_path = "gs://{}/{}".format(bucket, zip_filename)
+
+  files = gsutil_ls(bucket)
   found = [f for f in files if zip_filename in f]
   if not found:
     raise ValueError( "ERROR: zip file not found in bucket, path={}".format(bucket_path))
