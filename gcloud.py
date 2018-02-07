@@ -37,13 +37,14 @@
   # authorize access to Google Cloud SDK from `colaboratory` VM
   project_name = "my-project-123"
   colab_utils.gcloud.gcloud_auth(project_name)
+  # colab_utils.gcloud.config_project(project_name)
 
   # set paths
   ROOT = %pwd
   LOG_DIR = os.path.join(ROOT, 'log')
   TRAIN_LOG = os.path.join(LOG_DIR, 'training-run-1')
 
-  gsutil_config_project(project_name)
+  
 
   # save latest checkpoint as a zipfile to a GCS bucket `gs://my-checkpoints/`
   #     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
@@ -71,7 +72,7 @@ import tensorflow as tf
 
 __all__ = [
   'gcloud_auth', 
-  'gsutil_config_project',
+  'config_project',
   'load_from_bucket',
   'save_to_bucket',
 ]
@@ -85,7 +86,7 @@ class GcsClient(object):
     if project_id:  
       GcsClient.client = storage.Client( project=project_id )
     if GcsClient.client is None or not GcsClient.client.project:
-      raise RuntimeError("Google Cloud Project is undefined. use gsutil_config_project(project_id)")
+      raise RuntimeError("Google Cloud Project is undefined. use colab_utils.gcloud.config_project(project_id)")
     return GcsClient.client.project  
 
 
@@ -101,7 +102,7 @@ class GcsClient(object):
 #     return error
 
 
-def gsutil_config_project(project_id=None):
+def config_project(project_id=None):
   return GcsClient.project(project_id)
 
 
@@ -130,7 +131,7 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
 
 
 
-def gsutil_download(gcs_path, local_path, project_id=None, force=False):
+def gcs_download(gcs_path, local_path, project_id=None, force=False):
   bucket_path, filename = os.path.split(gcs_path)
   bucket_name = os.path.basename(bucket_path)
   if os.path.isfile(local_path) and not force:
@@ -157,7 +158,7 @@ def gsutil_download(gcs_path, local_path, project_id=None, force=False):
 
 
 
-def gsutil_upload(local_path, gcs_path, project_id=None, force=False):
+def gcs_upload(local_path, gcs_path, project_id=None, force=False):
   bucket_path, filename = os.path.split(gcs_path)
   bucket_name = os.path.basename(bucket_path)
   
@@ -197,7 +198,7 @@ def gcloud_auth(project_id):
   auth.authenticate_user()
   # project_id = "my-project-123"
   get_ipython().system_raw("gcloud config set project {}".format(project_id) )
-  gsutil_config_project(project_id)  # set for google.cloud.storage
+  config_project(project_id)  # set for google.cloud.storage
   return project_id
 
 # tested OK
@@ -247,7 +248,7 @@ def load_from_bucket(zip_filename, bucket, train_dir):
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
     print( "downloading {} ...".format(bucket_path))
     # get_ipython().system_raw( "gsutil cp {} {}".format(bucket_path, zip_filepath))
-    result = gsutil_download(bucket_path, zip_filepath)
+    result = gcs_download(bucket_path, zip_filepath)
   else:
     print("WARNING: using existing zip file, path={}".format(zip_filepath))
   
@@ -365,7 +366,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
     print( "uploading zip archive to bucket={} ...".format(bucket_path))
     # result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
-    result = gsutil_upload(zip_filepath, bucket_path)
+    result = gcs_upload(zip_filepath, bucket_path)
         
     if type(result)==dict and result['err_code']:
       raise RuntimeError("ERROR: error uploading to gcloud, bucket={}".format(bucket_path))

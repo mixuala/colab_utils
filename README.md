@@ -66,6 +66,7 @@ import colab_utils.gcloud
 # authorize access to Google Cloud SDK from `colaboratory` VM
 project_name = "my-project-123"
 colab_utils.gcloud.gcloud_auth(project_name)
+# colab_utils.gcloud.config_project(project_name)
 
 
 # set paths
