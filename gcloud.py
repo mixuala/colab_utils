@@ -74,6 +74,7 @@ __all__ = [
   'gcloud_auth', 
   'config_project',
   'load_from_bucket',
+  'load_latest_checkpoint_from_bucket',
   'save_to_bucket',
 ]
 
@@ -296,7 +297,38 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   print("restored: bucket={} \n> checkpoint={}".format(bucket_path, checkpoint_name))
   return checkpoint_filename
 
-  
+
+
+def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
+  """find latest zipped 'checkpoint' in bucket and download
+    similar to tf.train.latest_checkpoint()
+
+  Args:
+    tensorboard_run: filter for zip files from the same run 
+        e.g.  "y-tensorboard-run" for  "my-tensorboard-run.6000.zip"
+    bucket: "gs://[bucket]"
+    train_dir: a diretory path to restore the checkpoint files, 
+                usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"
+
+  Return:
+    checkpoint_name, e.g. `/my-project/log/my-tensorboard-run/model.ckpt-6000`
+  """
+  import numpy as np
+  files = gsutil_ls(bucket)
+  checkpoints = [f for f in files if tensorboard_run in f ]
+  if not checkpoints:
+    raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
+  steps = [re.findall(".*\.(\d+)\.zip$", f)[0] for f in checkpoints ]
+  if not steps:
+    raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
+  latest_step = np.max(np.asarray(steps).astype(int))
+  if not latest_step:
+    raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
+  latest_checkpoint = [f for f in checkpoints if latest_step.astype(str) in f ]
+  # print(latest_checkpoint)
+  return load_from_bucket(latest_checkpoint[0], bucket, train_dir)
+
+    
 
 # tested OK
 def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
