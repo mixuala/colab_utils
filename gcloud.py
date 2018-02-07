@@ -97,7 +97,7 @@ def gsutil_config_project(project_id):
   __gcs_client__ = storage.Client( project=project_id )
   return __gcs_client__
 
-def gsutil_ls(bucket_name, filter=None, project_id=None, as ):
+def gsutil_ls(bucket_name, filter=None, project_id=None):
   if project_id is None: 
     client = __gcs_client__
   else: 
@@ -117,6 +117,7 @@ def gsutil_ls(bucket_name, filter=None, project_id=None, as ):
     raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
   except Exception as e:
     print(e)
+    
 
 def gsutil_download(gcs_path, local_path, project_id=None, force=False):
   bucket_path, filename = os.path.split(gcs_path)
