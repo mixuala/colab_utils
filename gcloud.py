@@ -81,7 +81,7 @@ class GcsClient(object):
   client=None
 
   @staticmethod
-  GcsClient.project(project_id=None):
+  def project(project_id=None):
     if project_id:  
       GcsClient.client = storage.Client( project=project_id )
     if GcsClient.client is None or not GcsClient.client.project:
