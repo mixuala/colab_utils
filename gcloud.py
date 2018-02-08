@@ -50,7 +50,7 @@
   #     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
   #                     e.g. gs://my-checkpoints/training-run-1.1000.zip"
   bucket_name = "my-checkpoints"
-  colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, save_events=True, force=False)
+  colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, project_name, save_events=True, force=False)
 
 
   # restore a zipfile from GCS bucket to a local directory, usually in  
@@ -215,9 +215,9 @@ def load_from_bucket(zip_filename, bucket, train_dir):
     !gcloud config set project {project_id}
     ```
 
-  Args:  restore from "gs://[bucket]/[zip_filename]"
+  Args:  
     zip_filename: e.g. "my-tensorboard-run.6000.zip"
-    bucket: "gs://[bucket]"
+    bucket: restore from "gs://[bucket]/[zip_filename]"
     train_dir: a diretory path to restore the checkpoint files, 
                 usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"
     
@@ -332,7 +332,7 @@ def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
     
 
 # tested OK
-def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
+def save_to_bucket(train_dir, bucket, project_id, step=None, save_events=True, force=False):
   """zip the latest checkpoint files from train_dir and save to GCS bucket
   
   NOTE: authorize notebook before use:
@@ -348,7 +348,9 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
     train_dir: a diretory path from which to save the checkpoint files, 
                 usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"                
     bucket: "gs://[bucket]"
-    step: global_step checkpoint number
+    project_id: GCS project_id 
+      # Note: pass explicitly because GcsClient.client doesn't seem to be working. timeout? 
+    step: global_step checkpoint number, if None, then use result from `tf.train.latest_checkpoint()`
     save_events: inclue tfevents files from Summary Ops in zip file
     force: overwrite existing bucket file
 
@@ -358,7 +360,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
   
   # bucket_path = "gs://{}/".format(bucket)
   # bucket_files = _shell("gsutil ls {}".format(bucket_path))
-  bucket_files = gsutil_ls(bucket)
+  bucket_files = gsutil_ls(bucket, project_id=project_id)
 
   checkpoint_path = train_dir
   if step:
@@ -372,10 +374,10 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
     zip_filename = "{}.{}.zip".format(os.path.basename(train_dir), global_step[0])
     zip_filepath = os.path.join("/tmp", zip_filename)
 
-    # check if gcs file already exists
-    found = [f for f in bucket_files if zip_filename in f]
-    if found and not force:
-      raise RuntimeError("WARNING: a zip file already exists, path={}. use force=True to overwrite".format(found[0]))
+  # check if gcs file already exists
+  found = [f for f in bucket_files if zip_filename in f]
+  if found and not force:
+    raise RuntimeError("WARNING: a zip file already exists, path={}. use force=True to overwrite".format(found[0]))
     
     files = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
     # files = !ls $checkpoint_path
@@ -403,7 +405,7 @@ def save_to_bucket(train_dir, bucket, step=None, save_events=True, force=False):
     bucket_path = "gs://{}/{}".format(bucket, zip_filename)
     print( "uploading zip archive to bucket={} ...".format(bucket_path))
     # result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
-    result = gcs_upload(zip_filepath, bucket_path)
+    result = gcs_upload(zip_filepath, bucket_path, project_id=project_id)
         
     if type(result)==dict and result['err_code']:
       raise RuntimeError("ERROR: error uploading to gcloud, bucket={}".format(bucket_path))

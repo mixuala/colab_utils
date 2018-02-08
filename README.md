@@ -78,7 +78,7 @@ TRAIN_LOG = os.path.join(LOG_DIR, 'training-run-1')
 #     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
 #                     e.g. gs://my-checkpoints/training-run-1.1000.zip"
 bucket_name = "my-checkpoints"
-colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, save_events=True, force=False)
+colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, project_name, save_events=True, force=False)
 
 
 # restore a zipfile from GCS bucket to a local directory, usually in  
