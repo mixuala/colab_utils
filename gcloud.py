@@ -332,7 +332,7 @@ def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
     
 
 # tested OK
-def save_to_bucket(train_dir, bucket, project_id, step=None, save_events=True, force=False):
+def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save_events=True, force=False):
   """zip the latest checkpoint files from train_dir and save to GCS bucket
   
   NOTE: authorize notebook before use:
@@ -350,6 +350,8 @@ def save_to_bucket(train_dir, bucket, project_id, step=None, save_events=True, f
     bucket: "gs://[bucket]"
     project_id: GCS project_id 
       # Note: pass explicitly because GcsClient.client doesn't seem to be working. timeout? 
+    basename: basename for the zip archive, e.g. filename="{basename}.{global_step}.zip"
+      default to os.path.basename(train_dir), or the tensorboard log dir
     step: global_step checkpoint number, if None, then use result from `tf.train.latest_checkpoint()`
     save_events: inclue tfevents files from Summary Ops in zip file
     force: overwrite existing bucket file
@@ -371,7 +373,9 @@ def save_to_bucket(train_dir, bucket, project_id, step=None, save_events=True, f
   global_step = re.findall(".*ckpt-?(\d+).*$",checkpoint_pattern)
   
   if global_step:
-    zip_filename = "{}.{}.zip".format(os.path.basename(train_dir), global_step[0])
+    if basename is None:
+      basename = os.path.basename(train_dir)
+    zip_filename = "{}.{}.zip".format(basename, global_step[0])
     zip_filepath = os.path.join("/tmp", zip_filename)
 
     # check if gcs file already exists
