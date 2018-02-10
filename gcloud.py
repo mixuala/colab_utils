@@ -424,35 +424,35 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
   return
 
 
-
+# TODO: migrate to python native
 def gcsfuse(bucket):
   """install `gcsfuse` and mount bucket to `/tmp/bucket/[bucket]`
 
   Args:
     bucket: bucket name
   """
-  found = !which gcsfuse
-  if not found:
-    !apt-get -y install lsb-release
-    RELEASE = !lsb_release -c -s
-    GCSFUSE_REPO="gcsfuse-" + RELEASE[0]
-    !export GCSFUSE_REPO=$GCSFUSE_REPO
-    !echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main"  | tee /etc/apt/sources.list.d/gcsfuse.list
-    !curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-    ! apt-get update
-    ! apt-get -y install gcsfuse
+  found = os.path.isfile("/usr/bin/gcsfuse")
+  # if not found:
+  #   !apt-get -y install lsb-release
+  #   RELEASE = !lsb_release -c -s
+  #   GCSFUSE_REPO="gcsfuse-" + RELEASE[0]
+  #   !export GCSFUSE_REPO=$GCSFUSE_REPO
+  #   !echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main"  | tee /etc/apt/sources.list.d/gcsfuse.list
+  #   !curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  #   ! apt-get update
+  #   ! apt-get -y install gcsfuse
 
-  found = !which gcsfuse
-  if not found:
-    raise RuntimeError("ERROR: problem installing gcsfuse")
+  # found = os.path.isfile("/usr/bin/gcsfuse")
+  # if not found:
+  #   raise RuntimeError("ERROR: problem installing gcsfuse")
 
-  BUCKET = bucket
-  BUCKET_PATH = "/tmp/bucket/{}".format(BUCKET)
-  if not os.path.isdir(BUCKET_PATH): 
-    !mkdir -p $BUCKET_PATH  
-  result = !gcsfuse $BUCKET $BUCKET_PATH
-  if result.pop()=='File system has been successfully mounted.'
-    return $BUCKET_PATH
-  raise RuntimeError("ERROR: problem mounting gcs, bucket={}\n{}".format(BUCKET, "\n".join(result)))
+  # BUCKET = bucket
+  # BUCKET_PATH = "/tmp/bucket/{}".format(BUCKET)
+  # if not os.path.isdir(BUCKET_PATH): 
+  #   !mkdir -p $BUCKET_PATH  
+  # result = !gcsfuse $BUCKET $BUCKET_PATH
+  # if result.pop()=='File system has been successfully mounted.'
+  #   return $BUCKET_PATH
+  # raise RuntimeError("ERROR: problem mounting gcs, bucket={}\n{}".format(BUCKET, "\n".join(result)))
 
   
