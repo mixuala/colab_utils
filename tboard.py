@@ -48,14 +48,12 @@ __all__ = [
   'launch_tensorboard',
 ]
 
-def _shell(cmd):
-  p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-  output = [line for line in p.stdout.read().decode("utf-8").split("\n")]
-  retval = p.wait()
-  if retval==0:
-      return output
-  error = ["error: {}".format(retval)] + [line for line in p.stderr.read().decode("utf-8").split("\n")]
-  return error
+def __shell__(cmd, split=True):
+  # get_ipython().system_raw(cmd)
+  result = get_ipython().getoutput(cmd, split=split)
+  if result and not split:
+    result = result.strip('\n')
+  return result  
 
 
 # tested OK
@@ -117,7 +115,7 @@ def launch_tensorboard(bin_dir="/tmp", log_dir="/tmp", retval=False):
   if not tf.gfile.Exists(log_dir):  tf.gfile.MakeDirs(log_dir)
   
   # check status of tensorboard and ngrok
-  ps = _shell("ps -ax")
+  ps = __shell__("ps -ax")
   is_tensorboard_running = len([f for f in ps if "tensorboard" in f ]) > 0
   is_ngrok_running = len([f for f in ps if "ngrok" in f ]) > 0
   print("status: tensorboard={}, ngrok={}".format(is_tensorboard_running, is_ngrok_running))
