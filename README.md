@@ -55,6 +55,9 @@ Long-running training sessions on `colaboratory` VMs are at risk of reset after 
 inactivity or shutdown after 12hrs of training. This script allows you to save/restore
 checkpoints to Google Cloud Storage to avoid losing your results.
 
+You can also mount a GCS bucket on the local filesystem using the `gcsfuse` package for syncing 
+checkpoints automatically to the cloud
+
 ```
 ************************************
 *     A simple working script      *
@@ -86,6 +89,13 @@ colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, project_name, save_eve
 CHECKPOINTS = os.path.join(LOG_DIR, 'training-run-2')
 zipfile = os.path.basename(TRAIN_LOG)   # training-run-1
 colab_utils.gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHECKPOINTS )
+
+
+# mount gcs bucket to local fs using the `gcsfuse` package, installs automatically
+bucket = "my-bucket"
+localdir = colab_utils.gcloud.gcsfuse(bucket=bucket)  
+# gcsfuse(): Using mount point: /tmp/gcs-bucket/my-bucket
+
 ```
 
 ## GCS Authorization

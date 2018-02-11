@@ -58,6 +58,12 @@
   CHECKPOINTS = os.path.join(LOG_DIR, 'training-run-2')
   zipfile = os.path.basename(TRAIN_LOG)   # training-run-1
   colab_utils.gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHECKPOINTS )
+
+
+  # mount gcs bucket to local fs using gcsfuse package 
+  bucket = "my-bucket"
+  localdir = colab_utils.gcloud.gcsfuse(bucket=bucket)  
+  # gcsfuse(): Using mount point: /tmp/gcs-bucket/my-bucket
   ```
 
 """
@@ -154,11 +160,17 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
     raise e
 
 def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", project_id=None):
-  """
+  """create a bucket in the GCS project
+
+  same as `!gsutil mb -p {project_id} -c {gcd_class} -l {gcs_location} {bucket_name}` 
+  
   Args:
     bucket_name: bucket name
     gcs_class: storage class if creating bucket [standard|regional|etc]
     gcs_location: storage location, if creating bucket [asia-east1|etc]
+
+  Return:
+    GCS bucket path, e.g. gs://{bucket}
   """
   if project_id is None:
     client = GcsClient.client
@@ -497,20 +509,18 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
 
 
 def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", project_id=None):
-  """install `gcsfuse` and mount bucket to `/tmp/gcs-bucket/[bucket]`
+  """install `gcsfuse` as necessary and mount GCS bucket to local fs in `/tmp/gcs-bucket/[bucket]`
+
+  NOTE: not sure how to use client.create_bucket() with class and location defaults ?
+  see: https://stackoverflow.com/questions/48728491/google-cloud-storage-api-how-do-you-call-create-bucket-with-storage-class-a
 
   Args:
     bucket: bucket name
     gcs_class: storage class if creating bucket [standard|regional|etc]
     gcs_location: storage location, if creating bucket [asia-east1|etc]
 
-
-  NOTE: not sure how to use client.create_bucket() with class and location defaults ?
-  see: https://stackoverflow.com/questions/48728491/google-cloud-storage-api-how-do-you-call-create-bucket-with-storage-class-a
-
   Return:
     path to local fs dir (fused to bucket), FUSED_BUCKET_PATH
-
   """
   found = os.path.isfile("/usr/bin/gcsfuse")
   if not found:
