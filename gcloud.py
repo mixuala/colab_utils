@@ -102,6 +102,12 @@ class GcsClient(object):
 #       error['err_msg]'] = [line for line in p.stderr.read().decode("utf-8").split("\n")]
 #     return error
 
+def __shell__(cmd, split=True):
+  # get_ipython().system_raw(cmd)
+  result = get_ipython().getoutput(cmd, split=split)
+  if result and not split:
+    result = result.strip('\n')
+  return result
 
 def config_project(project_id=None):
   return GcsClient.project(project_id)
@@ -130,6 +136,48 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
   except Exception as e:
     print(e)
 
+def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", project_id=None):
+  """
+  Args:
+    bucket_name: bucket name
+    gcs_class: storage class if creating bucket [standard|regional|etc]
+    gcs_location: storage location, if creating bucket [asia-east1|etc]
+  """
+  if project_id is None:
+    client = GcsClient.client
+    project_id = client.project
+  else:
+    client = storage.Client( project=project_id )
+
+  ###
+  ### TODO: how to set class, location using client.create_bucket()??
+  ###
+  # try:
+  #   # client = storage.Client( project=project_id )
+  #   bucket_path = client.create_bucket(bucket_name)
+  #   # TODO: check above line
+  # except exceptions.Conflict:
+  #   raise ValueError("ERROR: GCS bucket exists, path={}".format(bucket_path))
+  # except Exception as e:
+  #   print(e)
+
+  BUCKET = bucket_name
+  BUCKET_PATH = "gs://{}".format(BUCKET)
+  result = gsutil_ls(BUCKET)
+  # result = __shell__("gsutil ls {}".format(BUCKET_PATH))
+  if [f for f in result if "BucketNotFoundException" in f]:
+    print("making bucket={}".format(BUCKET_PATH))
+    # TODO: use gcs python API
+    cmd = "gsutil mb -p {} -c {} -l {}    {}".format(
+                                project_id, gcs_class, gcs_location, BUCKET_PATH)
+    # print(cmd)
+    result = __shell__(  cmd, split=True )
+    print("\n".join(result))
+    if len(result) == 1 and "Creating gs://" in result[0]:
+      return BUCKET_PATH
+    raise RuntimeError("ERROR: problem creating bucket, bucket={}".format(BUCKET_PATH))
+  else:
+    raise ValueError("ERROR: gcs bucket exists, bucket={}".format(BUCKET_PATH))
 
 
 def gcs_download(gcs_path, local_path, project_id=None, force=False):
@@ -424,35 +472,83 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
   return
 
 
-# TODO: migrate to python native
-def gcsfuse(bucket):
-  """install `gcsfuse` and mount bucket to `/tmp/bucket/[bucket]`
+
+def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", project_id=None):
+  """install `gcsfuse` and mount bucket to `/tmp/gcs-bucket/[bucket]`
 
   Args:
     bucket: bucket name
+    gcs_class: storage class if creating bucket [standard|regional|etc]
+    gcs_location: storage location, if creating bucket [asia-east1|etc]
+
+
+  NOTE: not sure how to use client.create_bucket() with class and location defaults ?
+  see: https://stackoverflow.com/questions/48728491/google-cloud-storage-api-how-do-you-call-create-bucket-with-storage-class-a
+
+  Return:
+    path to local fs dir (fused to bucket), FUSED_BUCKET_PATH
+
   """
   found = os.path.isfile("/usr/bin/gcsfuse")
-  # if not found:
-  #   !apt-get -y install lsb-release
-  #   RELEASE = !lsb_release -c -s
-  #   GCSFUSE_REPO="gcsfuse-" + RELEASE[0]
-  #   !export GCSFUSE_REPO=$GCSFUSE_REPO
-  #   !echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main"  | tee /etc/apt/sources.list.d/gcsfuse.list
-  #   !curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-  #   ! apt-get update
-  #   ! apt-get -y install gcsfuse
+  if not found:
+    ###
+    ### install gcsfuse
+    ###
+    print("installing gcsfuse...")
+    # !apt-get -y install lsb-release
+    __shell__( "apt-get -y install lsb-release" )
+    # RELEASE = !lsb_release -c -s
+    # GCSFUSE_REPO="gcsfuse-" + RELEASE[0]
+    GCSFUSE_REPO = "gcsfuse-{}".format( __shell__("lsb_release -c -s", split=False))
+    # with open("/tmp/result.txt", 'r') as f: GCSFUSE_REPO = "gcsfuse-"+f.read()
+    # print(GCSFUSE_REPO)
 
-  # found = os.path.isfile("/usr/bin/gcsfuse")
-  # if not found:
-  #   raise RuntimeError("ERROR: problem installing gcsfuse")
+    # !echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main"  | tee /etc/apt/sources.list.d/gcsfuse.list
+    line_entry = "deb http://packages.cloud.google.com/apt {} main" .format(GCSFUSE_REPO)
+    # append line_entry to apt sources file
+    filepath = "/etc/apt/sources.list.d/gcsfuse.list"
+    with open(filepath, 'a') as f: f.write(line_entry)
 
-  # BUCKET = bucket
-  # BUCKET_PATH = "/tmp/bucket/{}".format(BUCKET)
-  # if not os.path.isdir(BUCKET_PATH): 
-  #   !mkdir -p $BUCKET_PATH  
-  # result = !gcsfuse $BUCKET $BUCKET_PATH
-  # if result.pop()=='File system has been successfully mounted.'
-  #   return $BUCKET_PATH
-  # raise RuntimeError("ERROR: problem mounting gcs, bucket={}\n{}".format(BUCKET, "\n".join(result)))
+    # !curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+    __shell__( "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -" )
+    # ! apt-get update
+    __shell__( "apt-get update" )
+    # ! apt-get -y install gcsfuse
+    __shell__( "apt-get -y install gcsfuse" )
 
+    found = os.path.isfile("/usr/bin/gcsfuse")
+    if not found:
+      raise RuntimeError("ERROR: problem installing gcsfuse")
+    print("gcsfuse installation complete:  /usr/bin/gcsfuse")
+
+  if project_id is None:
+    project_id = config_project()
+    project_id = "nima-191903"
+
+  ###
+  ### get valid google cloud BUCKET_PATH, create if necessary 
+  ###
+  if bucket:
+    BUCKET = bucket
+  else:
+    import time
+    BUCKET = "gcsfuse-{}".format(int(time.time()))
+    
+  ### get bucket, create if necessary
+  BUCKET_PATH = "gs://{}".format(BUCKET)
+  result = gsutil_ls(BUCKET)
+  # result = __shell__("gsutil ls {}".format(BUCKET_PATH))
+  print("gsutil ls {}: {} ".format(BUCKET_PATH, result))
+  if [f for f in result if "BucketNotFoundException" in f]:
+    result = gsutil_mb(BUCKET, project_id=project_id)
   
+  ### fuse bucket to local fs
+  FUSED_BUCKET_PATH = "/tmp/gcs-bucket/{}".format(BUCKET)
+  if not tf.gfile.Exists(FUSED_BUCKET_PATH):  tf.gfile.MakeDirs(FUSED_BUCKET_PATH)
+  cmd = "gcsfuse {} {}".format(BUCKET, FUSED_BUCKET_PATH)
+  # print(cmd)
+  result = __shell__(  cmd  )
+  print("gcsfuse():\n", "\n".join(result))
+  if result.pop()=='File system has been successfully mounted.':
+    return FUSED_BUCKET_PATH
+  raise RuntimeError("ERROR: problem mounting gcs, bucket={}\n{}".format(BUCKET, "\n".join(result)))
