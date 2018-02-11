@@ -110,11 +110,28 @@ def __shell__(cmd, split=True):
   return result
 
 def config_project(project_id=None):
+  """called by gcloud_auth()
+  """
   return GcsClient.project(project_id)
 
 
 
 def gsutil_ls(bucket_name, filter=None, project_id=None):
+  """
+  list "files" in gcs bucket
+  test for NotFound using 
+
+  result = gsutil_ls(bucket_name)
+  notFound = "BucketNotFoundException" in result
+
+  Args:
+    bucket_name
+    filter: filter file list for string, no wildcards
+    project_id: gcs project_id
+
+  Return:
+    SList() of file names or ["BucketNotFoundException", "GCS bucket not found, path={}"]
+  """
   if project_id is None:
     client = GcsClient.client
   else:
@@ -132,9 +149,9 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
     return files
 
   except exceptions.NotFound:
-    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+    return ["BucketNotFoundException", "GCS bucket not found, path={}".format(bucket_path)]
   except Exception as e:
-    print(e)
+    raise e
 
 def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", project_id=None):
   """
@@ -164,10 +181,10 @@ def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", proj
   BUCKET = bucket_name
   BUCKET_PATH = "gs://{}".format(BUCKET)
   result = gsutil_ls(BUCKET)
-  # result = __shell__("gsutil ls {}".format(BUCKET_PATH))
-  if [f for f in result if "BucketNotFoundException" in f]:
+  # result = __shell__("gsutil ls {}".format(BUCKET_PATH, split=False))
+  if "BucketNotFoundException" in result: 
     print("making bucket={}".format(BUCKET_PATH))
-    # TODO: use gcs python API
+    # TODO: use gcs python API (above)
     cmd = "gsutil mb -p {} -c {} -l {}    {}".format(
                                 project_id, gcs_class, gcs_location, BUCKET_PATH)
     # print(cmd)
@@ -200,7 +217,7 @@ def gcs_download(gcs_path, local_path, project_id=None, force=False):
     return local_path
 
   except exceptions.NotFound:
-    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+    raise ValueError("BucketNotFoundException: GCS bucket not found, path={}".format(bucket_path))
   except Exception as e:
     print(e)
 
@@ -217,8 +234,12 @@ def gcs_upload(local_path, gcs_path, project_id=None, force=False):
     client = storage.Client( project=project_id )
 
   try:
-    if gsutil_ls(bucket_name, filter=filename, project_id=project_id) and not force:
-      raise Warning("WARNING: gcs file already exists, use force=True. path={}".format(local_path))
+    result = gsutil_ls(bucket_name, filter=filename, project_id=project_id)
+    # result = __shell__("gsutil ls {}".format(BUCKET_PATH, split=False))
+    if "BucketNotFoundException" in result: 
+      raise ValueError( "ERROR: bucket not found, path={}".format(bucket_name))
+    if result and not force:
+      raise Warning("WARNING: gcs file already exists, use force=True. bucket={}".format(bucket_name))
 
     # client = storage.Client( project=project_id )
     bucket = client.get_bucket(bucket_name)
@@ -228,7 +249,7 @@ def gcs_upload(local_path, gcs_path, project_id=None, force=False):
     return gcs_path
 
   except exceptions.NotFound:
-    raise ValueError("ERROR: GCS bucket not found, path={}".format(bucket_path))
+    raise ValueError("BucketNotFoundException: GCS bucket not found, path={}".format(bucket_path))
   except Exception as e:
     print(e)
 
@@ -280,11 +301,12 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   """
 
   # bucket_path = "gs://{}/".format(bucket)
-  # files = _shell("gsutil ls {}".format(bucket_path))
+  # found = _shell("gsutil ls {}".format(bucket_path))
   bucket_path = "gs://{}/{}".format(bucket, zip_filename)
 
-  files = gsutil_ls(bucket)
-  found = [f for f in files if zip_filename in f]
+  found = gsutil_ls(bucket, filter=zip_filename)
+  if "BucketNotFoundException" in found: 
+    raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
   if not found:
     raise ValueError( "ERROR: zip file not found in bucket, path={}".format(bucket_path))
 
@@ -362,8 +384,9 @@ def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
     checkpoint_name, e.g. `/my-project/log/my-tensorboard-run/model.ckpt-6000`
   """
   import numpy as np
-  files = gsutil_ls(bucket)
-  checkpoints = [f for f in files if tensorboard_run in f ]
+  checkpoints = gsutil_ls(bucket, filter=tensorboard_run)
+  if "BucketNotFoundException" in checkpoints: 
+    raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
   if not checkpoints:
     raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
   steps = [re.findall(".*\.(\d+)\.zip$", f)[0] for f in checkpoints ]
@@ -407,10 +430,6 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
   Return:
     bucket path, e.g. "gs://[bucket]/[zip_filename]"
   """
-  
-  # bucket_path = "gs://{}/".format(bucket)
-  # bucket_files = _shell("gsutil ls {}".format(bucket_path))
-  bucket_files = gsutil_ls(bucket, project_id=project_id)
 
   checkpoint_path = train_dir
   if step:
@@ -427,7 +446,11 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
     zip_filepath = os.path.join("/tmp", zip_filename)
 
     # check if gcs file already exists
-    found = [f for f in bucket_files if zip_filename in f]
+    # bucket_path = "gs://{}/".format(bucket)
+    # bucket_files = _shell("gsutil ls {}".format(bucket_path))
+    found = gsutil_ls(bucket, filter=zip_filename, project_id=project_id)
+    if "BucketNotFoundException" in found: 
+      raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
     if found and not force:
       raise RuntimeError("WARNING: a zip file already exists, path={}. use force=True to overwrite".format(found[0]))
       
@@ -536,14 +559,9 @@ def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", projec
     
   ### get bucket, create if necessary
   BUCKET_PATH = "gs://{}".format(BUCKET)
-  try:
-    result = gsutil_ls(BUCKET)
-    # result = __shell__("gsutil ls {}".format(BUCKET_PATH))
-  except ValueError as e:
-    if "ERROR: GCS bucket not found" in e:
-      result = gsutil_mb(BUCKET, project_id=project_id)
-  except Exception as e:
-    raise e
+  result = gsutil_ls(BUCKET)
+  if "BucketNotFoundException" in result:
+    result = gsutil_mb(BUCKET, project_id=project_id)
   
   print("gsutil ls {}: {} ".format(BUCKET_PATH, result))
 
