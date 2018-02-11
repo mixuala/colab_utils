@@ -536,11 +536,17 @@ def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", projec
     
   ### get bucket, create if necessary
   BUCKET_PATH = "gs://{}".format(BUCKET)
-  result = gsutil_ls(BUCKET)
-  # result = __shell__("gsutil ls {}".format(BUCKET_PATH))
+  try:
+    result = gsutil_ls(BUCKET)
+    # result = __shell__("gsutil ls {}".format(BUCKET_PATH))
+  except ValueError as e:
+    if "ERROR: GCS bucket not found" in e:
+      result = gsutil_mb(BUCKET, project_id=project_id)
+  except Exception as e:
+    raise e
+  
   print("gsutil ls {}: {} ".format(BUCKET_PATH, result))
-  if [f for f in result if "BucketNotFoundException" in f]:
-    result = gsutil_mb(BUCKET, project_id=project_id)
+
   
   ### fuse bucket to local fs
   FUSED_BUCKET_PATH = "/tmp/gcs-bucket/{}".format(BUCKET)
