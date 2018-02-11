@@ -132,7 +132,7 @@ colab_utils.gcloud.load_from_bucket(zip_filename, bucket, train_dir ):
 ## Mount a Google Cloud Storage bucket to the local filesystem
 use `gcsfuse` to automatically sync to GCS
 
-### `gcsfuse(bucket=None, gcs_class, gcs_location, project_id)`
+### `gcsfuse(bucket=None)`
 ```
 local_path = gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", project_id=None)
 ```
