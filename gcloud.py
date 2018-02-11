@@ -85,6 +85,7 @@ __all__ = [
   'load_from_bucket',
   'load_latest_checkpoint_from_bucket',
   'save_to_bucket',
+  'gcsfuse',
 ]
 
 class GcsClient(object):
@@ -98,18 +99,6 @@ class GcsClient(object):
     if GcsClient.client is None or not GcsClient.client.project:
       raise RuntimeError("Google Cloud Project is undefined. use colab_utils.gcloud.config_project(project_id)")
     return GcsClient.client.project  
-
-
-# def _shell(cmd):
-#     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-#     output = [line for line in p.stdout.read().decode("utf-8").split("\n")]
-#     retval = p.wait()
-#     if retval==0:
-#         return output
-#     error = {'err_code': retval}  
-#     if p.stderr and p.stderr.read:
-#       error['err_msg]'] = [line for line in p.stderr.read().decode("utf-8").split("\n")]
-#     return error
 
 def __shell__(cmd, split=True):
   # get_ipython().system_raw(cmd)
@@ -175,6 +164,12 @@ def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", proj
   Return:
     GCS bucket path, e.g. gs://{bucket}
   """
+
+  _cmd = {
+    "make_bucket"             :  "gsutil mb -p {} -c {} -l {}    {}",
+  }
+
+
   if project_id is None:
     client = GcsClient.client
     project_id = client.project
@@ -200,8 +195,7 @@ def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", proj
   if "BucketNotFoundException" in result: 
     print("making bucket={}".format(BUCKET_PATH))
     # TODO: use gcs python API (above)
-    cmd = "gsutil mb -p {} -c {} -l {}    {}".format(
-                                project_id, gcs_class, gcs_location, BUCKET_PATH)
+    cmd = _cmd["make_bucket"].format( project_id, gcs_class, gcs_location, BUCKET_PATH)
     # print(cmd)
     result = __shell__(  cmd, split=True )
     print("\n".join(result))
@@ -525,32 +519,35 @@ def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", projec
   Return:
     path to local fs dir (fused to bucket), FUSED_BUCKET_PATH
   """
+
+  ### cmd strings passed to shell
+  _cmd = {
+    "install_lsb_release" : "apt-get -y install lsb-release",
+    "get_lsb_release"     : "lsb_release -c -s",
+    "install_gcsfuse"     :[ 
+                            "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -",
+                            "apt-get update",
+                            "apt-get -y install gcsfuse",
+                           ],
+    "gcsfuse"             :  "gcsfuse {} {}",
+  }
+
   found = os.path.isfile("/usr/bin/gcsfuse")
   if not found:
     ###
     ### install gcsfuse
     ###
     print("installing gcsfuse...")
-    # !apt-get -y install lsb-release
-    __shell__( "apt-get -y install lsb-release" )
-    # RELEASE = !lsb_release -c -s
-    # GCSFUSE_REPO="gcsfuse-" + RELEASE[0]
-    GCSFUSE_REPO = "gcsfuse-{}".format( __shell__("lsb_release -c -s", split=False))
-    # with open("/tmp/result.txt", 'r') as f: GCSFUSE_REPO = "gcsfuse-"+f.read()
-    # print(GCSFUSE_REPO)
-
-    # !echo "deb http://packages.cloud.google.com/apt $GCSFUSE_REPO main"  | tee /etc/apt/sources.list.d/gcsfuse.list
+    __shell__( _cmd["install_lsb_release"] )
+    GCSFUSE_REPO = "gcsfuse-{}".format( __shell__(_cmd["get_lsb_release"], split=False))
+    # add package to distro
     line_entry = "deb http://packages.cloud.google.com/apt {} main" .format(GCSFUSE_REPO)
     # append line_entry to apt sources file
     filepath = "/etc/apt/sources.list.d/gcsfuse.list"
     with open(filepath, 'a') as f: f.write(line_entry)
-
-    # !curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-    __shell__( "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -" )
-    # ! apt-get update
-    __shell__( "apt-get update" )
-    # ! apt-get -y install gcsfuse
-    __shell__( "apt-get -y install gcsfuse" )
+    
+    for cmd in _cmd["install_gcsfuse"]:
+      __shell__( cmd )
 
     found = os.path.isfile("/usr/bin/gcsfuse")
     if not found:
@@ -559,7 +556,6 @@ def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", projec
 
   if project_id is None:
     project_id = config_project()
-    project_id = "nima-191903"
 
   ###
   ### get valid google cloud BUCKET_PATH, create if necessary 
@@ -575,16 +571,14 @@ def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", projec
   result = gsutil_ls(BUCKET)
   if "BucketNotFoundException" in result:
     result = gsutil_mb(BUCKET, project_id=project_id)
-  
   print("gsutil ls {}: {} ".format(BUCKET_PATH, result))
 
-  
   ### fuse bucket to local fs
   FUSED_BUCKET_PATH = "/tmp/gcs-bucket/{}".format(BUCKET)
   if not tf.gfile.Exists(FUSED_BUCKET_PATH):  tf.gfile.MakeDirs(FUSED_BUCKET_PATH)
-  cmd = "gcsfuse {} {}".format(BUCKET, FUSED_BUCKET_PATH)
+  # cmd = _cmd["gcsfuse"].format(BUCKET, FUSED_BUCKET_PATH)
   # print(cmd)
-  result = __shell__(  cmd  )
+  result = __shell__(  _cmd["gcsfuse"].format(BUCKET, FUSED_BUCKET_PATH)  )
   print("gcsfuse():\n", "\n".join(result))
   if result.pop()=='File system has been successfully mounted.':
     return FUSED_BUCKET_PATH
