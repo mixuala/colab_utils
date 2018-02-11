@@ -109,7 +109,7 @@ def __shell__(cmd, split=True):
     result = result.strip('\n')
   return result
 
-def config_project(project_id=None):
+def config_project(project_id):
   """called by gcloud_auth()
   """
   return GcsClient.project(project_id)
