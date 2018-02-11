@@ -93,8 +93,11 @@ colab_utils.gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHEC
 
 # mount gcs bucket to local fs using the `gcsfuse` package, installs automatically
 bucket = "my-bucket"
-localdir = colab_utils.gcloud.gcsfuse(bucket=bucket)  
+local_path = colab_utils.gcloud.gcsfuse(bucket=bucket)  
 # gcsfuse(): Using mount point: /tmp/gcs-bucket/my-bucket
+
+!ls -l local_path
+!umount local_path
 
 ```
 
@@ -125,3 +128,14 @@ download and unzip checkpoint files from GCS bucket, save to train_dir
 ```
 colab_utils.gcloud.load_from_bucket(zip_filename, bucket, train_dir ):
 ```
+
+## Mount a Google Cloud Storage bucket to the local filesystem
+use `gcsfuse` to automatically sync to GCS
+
+### `gcsfuse(bucket=None, gcs_class, gcs_location, project_id)`
+```
+local_path = gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", project_id=None)
+```
+
+
+

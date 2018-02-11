@@ -62,8 +62,11 @@
 
   # mount gcs bucket to local fs using gcsfuse package 
   bucket = "my-bucket"
-  localdir = colab_utils.gcloud.gcsfuse(bucket=bucket)  
+  lolocal_pathcaldir = colab_utils.gcloud.gcsfuse(bucket=bucket)  
   # gcsfuse(): Using mount point: /tmp/gcs-bucket/my-bucket
+
+  !ls -l local_path
+  !umount local_path
   ```
 
 """
