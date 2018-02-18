@@ -67,6 +67,28 @@
 
   !ls -l local_path
   !umount local_path
+
+
+  # use `SaverWithCallback` to save tf.train.Saver() checkpoint to bucket
+  #
+  #
+  import os, re
+  import colab_utils.gcloud
+  ## closure, for use with colaboratory 
+  bucket = "my-bucket"
+  project_name = "my-project-123"
+  def save_checkpoint_to_bucket( sess, save_path, model_checkpoint_path, **kwargs ):
+    # e.g. model_checkpoint_path = /tensorflow/log/run1/model.ckpt-14
+    train_log, checkpoint = os.path.split(kwargs['checkpoint_path'])
+    step = kwargs['checkpoint_step']
+    bucket_path = colab_utils.gcloud.save_to_bucket(train_log, bucket, project_name, 
+                                      step=step,
+                                      save_events=True)
+    return bucket_path
+
+  saver = SaverWithCallback(save_checkpoint_to_bucket)
+  save.save([...])
+
   ```
 
 """
@@ -86,6 +108,7 @@ __all__ = [
   'load_latest_checkpoint_from_bucket',
   'save_to_bucket',
   'gcsfuse',
+  'SaverWithCallback',
 ]
 
 class GcsClient(object):
@@ -433,7 +456,7 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
     basename: basename for the zip archive, e.g. filename="{basename}.{global_step}.zip"
       default to os.path.basename(train_dir), or the tensorboard log dir
     step: global_step checkpoint number, if None, then use result from `tf.train.latest_checkpoint()`
-    save_events: inclue tfevents files from Summary Ops in zip file
+    save_events: include tfevents files from Summary Ops in zip file
     force: overwrite existing bucket file
 
   Return:
@@ -502,6 +525,9 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
     print("no checkpoint found, path={}".format(checkpoint_path))
     
   return
+
+
+  
 
 
 
@@ -583,3 +609,52 @@ def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", projec
   if result.pop()=='File system has been successfully mounted.':
     return FUSED_BUCKET_PATH
   raise RuntimeError("ERROR: problem mounting gcs, bucket={}\n{}".format(BUCKET, "\n".join(result)))
+
+
+
+
+
+
+
+
+class SaverWithCallback(tf.train.Saver):
+  """override tf.train.Saver to call `callback_op` after tf.train.Saver.save()
+
+    pass `callback_op(sess, save_path, model_checkpoint_path, **kwargs)` as the first arg 
+    to the constructor, or call self.set_callback(callback_op)
+
+    example:
+      ```
+      def after_save(sess, save_path, **kwargs):
+        step = kwargs['checkpoint_step']
+        path = kwargs['checkpoint_path']
+        print("SaverWithCallback.save() returned with checkpoint, step={},  path={}".format(step, path))
+
+      saver = SaverWithCallback(after_save)
+      ```  
+  """
+  _callback_op = None
+  def __init__(self, callback_op, **kwargs ):
+      self._callback_op = callback_op
+      super().__init__(**kwargs)
+
+  def set_callback(self, callback_op):
+    self._callback_op = callback_op
+      
+  def save(self, sess, save_path, **kwargs):
+      """override tf.train.Saver, call callback_op() after tf.train.Saver.save()
+      see: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/saver.py
+      """
+      model_checkpoint_path = super().save(sess, save_path, **kwargs)
+      if self._callback_op is not None:
+          ## call on a new thread?
+          try:
+            train_log, checkpoint = os.path.split(model_checkpoint_path)
+            found = re.findall(".*\.ckpt-(\d+)$",checkpoint)
+            step = found[0] if found else None
+            kwargs = dict(kwargs, checkpoint_path=model_checkpoint_path, checkpoint_step=step)
+            self._callback_op(sess, save_path, **kwargs)
+          except Exception as e:
+            print("WARNING: SaverWithCallback() callback exception, err={}".format(e))
+      return model_checkpoint_path
+    
