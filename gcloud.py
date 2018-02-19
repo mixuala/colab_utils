@@ -69,7 +69,7 @@
   !umount local_path
 
 
-  # use `SaverWithCallback` to save tf.train.Saver() checkpoint to bucket
+  # use `SaverWithCallback` to save tf.train.Saver() checkpoint and events as a zip archive to bucket
   #
   #
   import os, re
@@ -77,7 +77,7 @@
   ## closure, for use with colaboratory 
   bucket = "my-bucket"
   project_name = "my-project-123"
-  def save_checkpoint_to_bucket( sess, save_path, model_checkpoint_path, **kwargs ):
+  def save_checkpoint_to_bucket( sess, save_path, **kwargs ):
     # e.g. model_checkpoint_path = /tensorflow/log/run1/model.ckpt-14
     train_log, checkpoint = os.path.split(kwargs['checkpoint_path'])
     step = kwargs['checkpoint_step']
@@ -87,7 +87,7 @@
     return bucket_path
 
   saver = SaverWithCallback(save_checkpoint_to_bucket)
-  save.save([...])
+  # then call `saver.save()` as usual
 
   ```
 
@@ -359,6 +359,7 @@ def load_from_bucket(zip_filename, bucket, train_dir):
     shutil.rmtree("/tmp/ckpt")
   os.mkdir("/tmp/ckpt")
   print( "unzipping {} ...".format(zip_filepath))
+  # unzip -j ignore directories, -d target dir, tar -xvfz {archive.tar.gz} --overwrite --directory {target}
   get_ipython().system_raw( "unzip -j {} -d /tmp/ckpt".format(zip_filepath))
   print( "installing checkpoint to {} ...".format(train_dir))
   get_ipython().system_raw( "mv /tmp/ckpt/* {}".format(train_dir))
@@ -504,6 +505,7 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
 
 
     print( "writing zip archive to, file={}, count={} ...".format(len(filelist), zip_filepath))
+    # zip -D no dirs, tar -czvf {zip_filepath.tar.gz} -C {checkpoint_path} [f for f in os.listdir(...)]
     result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, " ".join(filelist)))
     
     if not os.path.isfile(zip_filepath):
@@ -620,8 +622,8 @@ def gcsfuse(bucket=None, gcs_class="regional", gcs_location="asia-east1", projec
 class SaverWithCallback(tf.train.Saver):
   """override tf.train.Saver to call `callback_op` after tf.train.Saver.save()
 
-    pass `callback_op(sess, save_path, model_checkpoint_path, **kwargs)` as the first arg 
-    to the constructor, or call self.set_callback(callback_op)
+    pass `callback_op(sess, save_path, **kwargs)` as the first arg to the constructor, or 
+    call self.set_callback(callback_op)
 
     example:
       ```

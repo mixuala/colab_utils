@@ -129,8 +129,46 @@ download and unzip checkpoint files from GCS bucket, save to train_dir
 colab_utils.gcloud.load_from_bucket(zip_filename, bucket, train_dir ):
 ```
 
+### `SaverWithCallback`
+adds a callback to the `tf.train.Saver.save()` method. This can be used to archive checkpoint and tensorboard event files to a GCS bucket
+
+```
+import os, re
+import colab_utils.gcloud
+
+
+# define callback
+def save_checkpoint_to_bucket( sess, save_path, **kwargs ):
+  # be sure to call `colab_utils.gcloud.gcloud_auth(project_id)` beforehand
+  bucket = "my-bucket"
+  project_name = "my-project-123"
+
+  # e.g. model_checkpoint_path = /tensorflow/log/run1/model.ckpt-14
+  train_log, checkpoint = os.path.split(kwargs['checkpoint_path'])
+  bucket_path = colab_utils.gcloud.save_to_bucket(train_log, bucket, project_name, 
+                                    step=kwargs['checkpoint_step'],
+                                    save_events=True)
+  return bucket_path
+
+# create subclassed `tf.train.Saver()`
+saver = SaverWithCallback(save_checkpoint_to_bucket)
+ckpt_interval = 3600    # save checkpoint every 1 hour and save to bucket
+
+tf.reset_default_graph()
+with tf.Graph().as_default():
+  # ...
+  checkpoint_saver = colab_utils.gcloud.SaverWithCallback(save_checkpoint_to_bucket)
+  loss = slim.learning.train(train_op, train_log, 
+                        save_interval_secs=ckpt_interval,
+                        saver=checkpoint_saver,
+                       )
+```
+
+
 ## Mount a Google Cloud Storage bucket to the local filesystem
 use `gcsfuse` to automatically sync to GCS
+
+> **Note:** While the lastest checkpoints can be restored, tensorboard event files are sometimes lost (size 0) if the VM resets upon hitting the 12 hour limit. It is generally better to use `SaverWithCallback()` to archive checkpoint and event files to a GCS bucket before the VM resets.
 
 ### `gcsfuse(bucket=None)`
 ```
