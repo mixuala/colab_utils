@@ -356,8 +356,8 @@ def load_from_bucket(tar_filename, bucket, train_dir):
     print("WARNING: using existing tar.gz file, path={}".format(tar_filepath))
   
   print( "extracting {} to {}".format(tar_filepath, train_dir))
-  # untar.gz -j ignore directories, -d target dir, tar -xvfz {archive.tar.gz} --overwrite --directory {target}
-  get_ipython().system_raw( "tar -xvfz {} --overwrite --directory {} ".format(tar_filepath, train_dir))
+  # untar.gz -j ignore directories, -d target dir, tar -xzvf {archive.tar.gz} --overwrite --directory {target}
+  get_ipython().system_raw( "tar -xzvf {} --overwrite --directory {} ".format(tar_filepath, train_dir))
   print( "installing checkpoint to {} ...".format(train_dir))
 
   # example filenames:
