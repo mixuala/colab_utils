@@ -504,7 +504,7 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
     if found and not force:
       raise RuntimeError("WARNING: a tar.gz file already exists, path={}. use force=True to overwrite".format(found[0]))
     
-    files_subfiles = _list_files_subfiles(checkpoint_path)
+    files_subfiles, root_dir = _list_files_subfiles(checkpoint_path)
 
     files = [f for f in files_subfiles if checkpoint_pattern in f]
     # files = !ls $checkpoint_path
