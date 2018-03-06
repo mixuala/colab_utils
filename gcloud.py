@@ -419,7 +419,8 @@ def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
     raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
   if not checkpoints:
     raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
-  steps = [re.findall(".*\.(\d+)\.tar.gz$", f)[0] for f in checkpoints ]
+  steps = [re.findall(".*\.(\d+)\.tar.gz$", f) for f in checkpoints ]
+  steps = list( int(s[0]) for s in steps if s)
   if not steps:
     raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
   latest_step = np.max(np.asarray(steps).astype(int))
