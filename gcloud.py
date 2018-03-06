@@ -46,18 +46,18 @@
 
   
 
-  # save latest checkpoint as a zipfile to a GCS bucket `gs://my-checkpoints/`
-  #     zipfile name = "{}.{}.zip".format() os.path.basename(TRAIN_LOG), global_step)
-  #                     e.g. gs://my-checkpoints/training-run-1.1000.zip"
+  # save latest checkpoint as a tarfile to a GCS bucket `gs://my-checkpoints/`
+  #     tarfile name = "{}.{}.tar.gz".format() os.path.basename(TRAIN_LOG), global_step)
+  #                     e.g. gs://my-checkpoints/training-run-1.1000.tar.gz"
   bucket_name = "my-checkpoints"
   colab_utils.gcloud.save_to_bucket(TRAIN_LOG, bucket_name, project_name, save_events=True, force=False)
 
 
-  # restore a zipfile from GCS bucket to a local directory, usually in  
+  # restore a tarfile from GCS bucket to a local directory, usually in  
   #     tensorboard `log_dir`
   CHECKPOINTS = os.path.join(LOG_DIR, 'training-run-2')
-  zipfile = os.path.basename(TRAIN_LOG)   # training-run-1
-  colab_utils.gcloud.load_from_bucket("training-run-1.1000.zip", bucket_name, CHECKPOINTS )
+  tarfile = os.path.basename(TRAIN_LOG)   # training-run-1
+  colab_utils.gcloud.load_from_bucket("training-run-1.1000.tar.gz", bucket_name, CHECKPOINTS )
 
 
   # mount gcs bucket to local fs using gcsfuse package 
@@ -69,7 +69,7 @@
   !umount local_path
 
 
-  # use `SaverWithCallback` to save tf.train.Saver() checkpoint and events as a zip archive to bucket
+  # use `SaverWithCallback` to save tf.train.Saver() checkpoint and events as a tar.gz archive to bucket
   #
   #
   import os, re
@@ -304,8 +304,8 @@ def gcloud_auth(project_id):
   return project_id
 
 # tested OK
-def load_from_bucket(zip_filename, bucket, train_dir):
-  """download and unzip checkpoint files from GCS bucket, save to train_dir
+def load_from_bucket(tar_filename, bucket, train_dir):
+  """download and untar.gz checkpoint files from GCS bucket, save to train_dir
   
   NOTE: authorize notebook before use:
     ```
@@ -317,8 +317,8 @@ def load_from_bucket(zip_filename, bucket, train_dir):
     ```
 
   Args:  
-    zip_filename: e.g. "my-tensorboard-run.6000.zip"
-    bucket: restore from "gs://[bucket]/[zip_filename]"
+    tar_filename: e.g. "my-tensorboard-run.6000.tar.gz"
+    bucket: restore from "gs://[bucket]/[tar_filename]"
     train_dir: a diretory path to restore the checkpoint files, 
                 usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"
     
@@ -334,35 +334,32 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
   # bucket_path = "gs://{}/".format(bucket)
   # found = _shell("gsutil ls {}".format(bucket_path))
-  bucket_path = "gs://{}/{}".format(bucket, zip_filename)
+  bucket_path = "gs://{}/{}".format(bucket, tar_filename)
 
-  found = gsutil_ls(bucket, filter=zip_filename)
+  found = gsutil_ls(bucket, filter=tar_filename)
   if "BucketNotFoundException" in found: 
     raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
   if not found:
-    raise ValueError( "ERROR: zip file not found in bucket, path={}".format(bucket_path))
+    raise ValueError( "ERROR: tar.gz file not found in bucket, path={}".format(bucket_path))
 
   train_dir = os.path.abspath(train_dir)
   if not os.path.isdir(train_dir):
     raise ValueError( "invalid train_dir, path={}".format(train_dir))
 
-  zip_filepath = os.path.join('/tmp', zip_filename)
-  if not os.path.isfile( zip_filepath ):
-    bucket_path = "gs://{}/{}".format(bucket, zip_filename)
+  tar_filepath = os.path.join('/tmp', tar_filename)
+  if not os.path.isfile( tar_filepath ):
+    bucket_path = "gs://{}/{}".format(bucket, tar_filename)
     print( "downloading {} ...".format(bucket_path))
-    # get_ipython().system_raw( "gsutil cp {} {}".format(bucket_path, zip_filepath))
-    result = gcs_download(bucket_path, zip_filepath)
+    # get_ipython().system_raw( "gsutil cp {} {}".format(bucket_path, tar_filepath))
+    result = gcs_download(bucket_path, tar_filepath)
   else:
-    print("WARNING: using existing zip file, path={}".format(zip_filepath))
+    print("WARNING: using existing tar.gz file, path={}".format(tar_filepath))
   
-  if (os.path.isdir("/tmp/ckpt")):
-    shutil.rmtree("/tmp/ckpt")
-  os.mkdir("/tmp/ckpt")
-  print( "unzipping {} ...".format(zip_filepath))
-  # unzip -j ignore directories, -d target dir, tar -xvfz {archive.tar.gz} --overwrite --directory {target}
-  get_ipython().system_raw( "unzip -j {} -d /tmp/ckpt".format(zip_filepath))
+  print( "extracting {} to {]".format(tar_filepath, train_dir))
+  # untar.gz -j ignore directories, -d target dir, tar -xvfz {archive.tar.gz} --overwrite --directory {target}
+  get_ipython().system_raw( "tar -xvfz {} --overwrite --directory {} ".format(tar_filepath, train_dir))
   print( "installing checkpoint to {} ...".format(train_dir))
-  get_ipython().system_raw( "mv /tmp/ckpt/* {}".format(train_dir))
+
   # example filenames:
   #   ['model.ckpt-6000.data-00000-of-00001',
   #   'model.ckpt-6000.index',
@@ -373,11 +370,11 @@ def load_from_bucket(zip_filename, bucket, train_dir):
   checkpoint_filename = os.path.join(train_dir, "checkpoint")
   print( "appending checkpoint to file={} ...".format(checkpoint_filename))
 
-  global_step = re.findall(".*\.(\d+)\.zip$",zip_filename)  
+  global_step = re.findall(".*\.(\d+)\.tar.gz$",tar_filename)  
   if global_step:
     checkpoint_name = os.path.join(train_dir,"model.ckpt-{}".format(global_step[0]))
   else:
-    raise RuntimeError("cannot get checkpoint from zip_filename, path={}".format(zip_filename))
+    raise RuntimeError("cannot get checkpoint from tar_filename, path={}".format(tar_filename))
 
   if not os.path.isfile(checkpoint_filename):
     with open(checkpoint_filename, 'w') as f:
@@ -403,12 +400,12 @@ def load_from_bucket(zip_filename, bucket, train_dir):
 
 
 def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
-  """find latest zipped 'checkpoint' in bucket and download
+  """find latest archived 'checkpoint' in bucket and download
     similar to tf.train.latest_checkpoint()
 
   Args:
-    tensorboard_run: filter for zip files from the same run 
-        e.g.  "y-tensorboard-run" for  "my-tensorboard-run.6000.zip"
+    tensorboard_run: filter for tar.gz files from the same run 
+        e.g.  "y-tensorboard-run" for  "my-tensorboard-run.6000.tar.gz"
     bucket: "gs://[bucket]"
     train_dir: a diretory path to restore the checkpoint files, 
                 usually TRAIN_LOG, e.g. "/my-project/log/my-tensorboard-run"
@@ -422,7 +419,7 @@ def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
     raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
   if not checkpoints:
     raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
-  steps = [re.findall(".*\.(\d+)\.zip$", f)[0] for f in checkpoints ]
+  steps = [re.findall(".*\.(\d+)\.tar.gz$", f)[0] for f in checkpoints ]
   if not steps:
     raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
   latest_step = np.max(np.asarray(steps).astype(int))
@@ -430,14 +427,14 @@ def load_latest_checkpoint_from_bucket(tensorboard_run, bucket, train_dir):
     raise ValueError("Checkpoint not found, tensorboard_run={}".format(tensorboard_run))
   latest_checkpoint = [f for f in checkpoints if latest_step.astype(str) in f ]
   print("latest checkpoint found, checkpoint={}".format(latest_checkpoint[0]))
-  zip_filename = os.path.basename(latest_checkpoint[0])
-  return load_from_bucket(zip_filename, bucket, train_dir)
+  tar_filename = os.path.basename(latest_checkpoint[0])
+  return load_from_bucket(tar_filename, bucket, train_dir)
 
     
 
 # tested OK
 def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save_events=True, force=False):
-  """zip the latest checkpoint files from train_dir and save to GCS bucket
+  """tar.gz the latest checkpoint files from train_dir and save to GCS bucket
   
   NOTE: authorize notebook before use:
     ```
@@ -454,15 +451,30 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
     bucket: "gs://[bucket]"
     project_id: GCS project_id 
       # Note: pass explicitly because GcsClient.client doesn't seem to be working. timeout? 
-    basename: basename for the zip archive, e.g. filename="{basename}.{global_step}.zip"
+    basename: basename for the tar.gz archive, e.g. filename="{basename}.{global_step}.tar.gz"
       default to os.path.basename(train_dir), or the tensorboard log dir
     step: global_step checkpoint number, if None, then use result from `tf.train.latest_checkpoint()`
-    save_events: include tfevents files from Summary Ops in zip file
+    save_events: include tfevents files from Summary Ops in tar.gz file
     force: overwrite existing bucket file
 
   Return:
-    bucket path, e.g. "gs://[bucket]/[zip_filename]"
+    bucket path, e.g. "gs://[bucket]/[tar_filename]"
   """
+
+  def _list_files_subfiles(dir):
+    """list relative path to files 2 levels deep
+    Returns:
+      f: list of relative path to all files/dirs
+      dir: root dir
+    """
+    f = []
+    try:
+      dirs_subdirs = [dir] + [ os.path.join(dir, d) for d in  next(os.walk(dir))[1] if not d.startswith(".")]
+      for d in dirs_subdirs:
+        f+=[ os.path.join(d.replace(dir,'.'), f) for f in os.listdir(d) if not f.startswith(".")]
+      return [f, dir]
+    except:
+      return [None, dir]
 
   checkpoint_path = train_dir
   if step:
@@ -474,23 +486,27 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
     checkpoint_pattern = os.path.basename(checkpoint)
     
   global_step = re.findall(".*ckpt-?(\d+).*$",checkpoint_pattern)
+
+
   
   if global_step:
     if basename is None:
       basename = os.path.basename(train_dir)
-    zip_filename = "{}.{}.zip".format(basename, global_step[0])
-    zip_filepath = os.path.join("/tmp", zip_filename)
+    tar_filename = "{}.{}.tar.gz".format(basename, global_step[0])
+    tar_filepath = os.path.join("/tmp", tar_filename)
 
     # check if gcs file already exists
     # bucket_path = "gs://{}/".format(bucket)
     # bucket_files = _shell("gsutil ls {}".format(bucket_path))
-    found = gsutil_ls(bucket, filter=zip_filename, project_id=project_id)
+    found = gsutil_ls(bucket, filter=tar_filename, project_id=project_id)
     if "BucketNotFoundException" in found: 
       raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
     if found and not force:
-      raise RuntimeError("WARNING: a zip file already exists, path={}. use force=True to overwrite".format(found[0]))
-      
-    files = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if checkpoint_pattern in f]
+      raise RuntimeError("WARNING: a tar.gz file already exists, path={}. use force=True to overwrite".format(found[0]))
+    
+    files_subfiles = _list_files_subfiles(checkpoint_path)
+
+    files = [f for f in files_subfiles if checkpoint_pattern in f]
     # files = !ls $checkpoint_path
     print("archiving checkpoint files={}".format(files))
     filelist = files
@@ -501,28 +517,29 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
       # event_path = os.path.join(train_dir,'events.out.tfevents*')
       # events = !ls $event_path
       event_pattern = 'events.out.tfevents'
-      events = ["{}/{}".format(checkpoint_path,f) for f in os.listdir(checkpoint_path) if event_pattern in f]
+      events = [f for f in files_subfiles if event_pattern in f]
       if events: 
         print("archiving event files={}".format(events))
         filelist = files + events
 
 
-    print( "writing zip archive to, file={}, count={} ...".format(len(filelist), zip_filepath))
-    # zip -D no dirs, tar -czvf {zip_filepath.tar.gz} -C {checkpoint_path} [f for f in os.listdir(...)]
-    result = get_ipython().system_raw( "zip -D {} {}".format(zip_filepath, " ".join(filelist)))
+    print( "writing tar.gz archive to, file={}, count={} ...".format(tar_filepath, len(filelist)))
+    # tar -czvf {tar_filepath.tar.gz} -C {checkpoint_path} [f for f in os.listdir(...)]
+    # result = get_ipython().system_raw( "tar.gz -D {} {}".format(tar_filepath, " ".join(filelist)))
+    result = get_ipython().system_raw( "tar -czvf {} -C {} {}".format(tar_filepath, checkpoint_path, " ".join(filelist)))
     
-    if not os.path.isfile(zip_filepath):
-      raise RuntimeError("ERROR: zip file not created, path={}".format(zip_filepath))
+    if not os.path.isfile(tar_filepath):
+      raise RuntimeError("ERROR: tar file not created, path={}".format(tar_filepath))
 
-    bucket_path = "gs://{}/{}".format(bucket, zip_filename)
-    print( "uploading zip archive to bucket={} ...".format(bucket_path))
-    # result = _shell("gsutil cp {} {}".format(zip_filepath, bucket_path))
-    result = gcs_upload(zip_filepath, bucket_path, project_id=project_id)
+    bucket_path = "gs://{}/{}".format(bucket, tar_filename)
+    print( "uploading tar archive to bucket={} ...".format(bucket_path))
+    # result = _shell("gsutil cp {} {}".format(tar_filepath, bucket_path))
+    result = gcs_upload(tar_filepath, bucket_path, project_id=project_id)
         
     if type(result)==dict and result['err_code']:
       raise RuntimeError("ERROR: error uploading to gcloud, bucket={}".format(bucket_path))
     
-    print("saved: zip={} \n> bucket={} \n> files={}".format(os.path.basename(zip_filepath), 
+    print("saved: tar={} \n> bucket={} \n> files={}".format(os.path.basename(tar_filepath), 
                                                       bucket_path, 
                                                       files))
     return bucket_path
