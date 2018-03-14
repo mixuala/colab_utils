@@ -96,9 +96,6 @@ import os
 import re
 import shutil
 import subprocess
-
-from apiclient.http import MediaIoBaseDownload
-from google.cloud import storage, exceptions
 import tensorflow as tf
 
 __all__ = [
@@ -113,15 +110,23 @@ __all__ = [
 
 class GcsClient(object):
   """Helper class to persist project between google cloud storage calls """
-  client=None
+  _project_id = None
 
   @staticmethod
   def project(project_id=None):
-    if project_id:  
-      GcsClient.client = storage.Client( project=project_id )
-    if GcsClient.client is None or not GcsClient.client.project:
-      raise RuntimeError("Google Cloud Project is undefined. use colab_utils.gcloud.config_project(project_id)")
-    return GcsClient.client.project  
+    if project_id:
+      get_ipython().system_raw(  "!gcloud config set core/project {}".format(project_id)  )
+      GcsClient._project_id = project_id
+    if GcsClient._project_id:
+      return GcsClient._project_id
+
+    project = __shell__(  "!gcloud config list project"  )
+    project = [l for l in project if 'project' in l]
+    if not project:
+      raise RuntimeError("Google Cloud Project is undefined. use `!gcloud config set core/project $project_id`")
+    project = re.findall(".*\=\W(.*)$",project[0])
+    GcsClient._project_id = project[0]
+    return GcsClient._project_id
 
 def __shell__(cmd, split=True):
   # get_ipython().system_raw(cmd)
@@ -130,10 +135,15 @@ def __shell__(cmd, split=True):
     result = result.strip('\n')
   return result
 
-def config_project(project_id=None):
-  """called by gcloud_auth()
-  """
-  return GcsClient.project(project_id)
+def config_project(project_id=None, region="asia-east1", zone="asia-east1-a"):
+  """set gcloud project defaults"""
+  GcsClient.project(project_id=project_id)
+  get_ipython().system_raw(  "!gcloud config set compute/region {}".format(region)  )
+  get_ipython().system_raw(  "!gcloud config set compute/zone {}".format(zone)  )
+  config = __shell__(  "gcloud config list "  )
+  print(config)
+  # config = [ l for l in config if 'project' in l or 'region' in l or 'zone' in l]
+  return config
 
 
 
@@ -154,23 +164,20 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
     SList() of file names or ["BucketNotFoundException", "GCS bucket not found, path={}"]
   """
   if project_id is None:
-    client = GcsClient.client
-  else:
-    client = storage.Client( project=project_id )
+    project_id = GcsClient.project()
 
 
   try:
     # client = storage.Client( project=project_id )
     bucket_path = "gs://{}/".format(bucket_name)
-    bucket = client.get_bucket(bucket_name)
-    files = ["{}{}".format(bucket_path,f.name) for f in bucket.list_blobs() ]
+    files = __shell__(  "!gsutil ls {} --project {}".format(bucket_path,project_id)  )
+    if "AccessDeniedException" in files:
+      raise RuntimeError("AccessDeniedException, msg={}".format(files))
     if filter:
       files = [f for f in files if filter in f]
     # print(files)
     return files
 
-  except exceptions.NotFound:
-    return ["BucketNotFoundException", "GCS bucket not found, path={}".format(bucket_path)]
   except Exception as e:
     raise e
 
@@ -188,45 +195,16 @@ def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", proj
     GCS bucket path, e.g. gs://{bucket}
   """
 
-  _cmd = {
-    "make_bucket"             :  "gsutil mb -p {} -c {} -l {}    {}",
-  }
-
-
   if project_id is None:
-    client = GcsClient.client
-    project_id = client.project
-  else:
-    client = storage.Client( project=project_id )
-
-  ###
-  ### TODO: how to set class, location using client.create_bucket()??
-  ###
-  # try:
-  #   # client = storage.Client( project=project_id )
-  #   bucket_path = client.create_bucket(bucket_name)
-  #   # TODO: check above line
-  # except exceptions.Conflict:
-  #   raise ValueError("ERROR: GCS bucket exists, path={}".format(bucket_path))
-  # except Exception as e:
-  #   print(e)
+    project_id = GcsClient.project()
 
   BUCKET = bucket_name
   BUCKET_PATH = "gs://{}".format(BUCKET)
-  result = gsutil_ls(BUCKET)
-  # result = __shell__("gsutil ls {}".format(BUCKET_PATH, split=False))
-  if "BucketNotFoundException" in result: 
-    print("making bucket={}".format(BUCKET_PATH))
-    # TODO: use gcs python API (above)
-    cmd = _cmd["make_bucket"].format( project_id, gcs_class, gcs_location, BUCKET_PATH)
-    # print(cmd)
-    result = __shell__(  cmd, split=True )
-    print("\n".join(result))
-    if len(result) == 1 and "Creating gs://" in result[0]:
-      return BUCKET_PATH
-    raise RuntimeError("ERROR: problem creating bucket, bucket={}".format(BUCKET_PATH))
-  else:
-    raise ValueError("ERROR: gcs bucket exists, bucket={}".format(BUCKET_PATH))
+  cmd = "!gsutil mb -p {} -c {} -l {} {}".format(project_id, gcs_class, gcs_location, BUCKET_PATH)
+  result = __shell__(  cmd   )
+  if "AccessDeniedException" in result:
+    raise RuntimeError("AccessDeniedException, msg={}".format(result))
+  return result
 
 
 def gcs_download(gcs_path, local_path, project_id=None, force=False):
@@ -236,20 +214,17 @@ def gcs_download(gcs_path, local_path, project_id=None, force=False):
     raise Warning("WARNING: local file already exists, use force=True. path={}".format(local_path))
   
   if project_id is None:
-    client = GcsClient.client
-  else:
-    client = storage.Client( project=project_id )
+    project_id = GcsClient.project()
+
 
   try:
-    # client = storage.Client( project=project_id )
-    bucket = client.get_bucket(bucket_name)
-    blob = storage.Blob(filename, bucket)
     print("downloading file={} ...".format(gcs_path))
-    blob.download_to_filename(local_path)
+    cmd = "!gsutil cp {} {}".format(gcs_path, local_path) 
+    result = __shell__(  cmd  )
+    if "AccessDeniedException" in result:
+      raise RuntimeError("AccessDeniedException, msg={}".format(result))
     return local_path
 
-  except exceptions.NotFound:
-    raise ValueError("BucketNotFoundException: GCS bucket not found, path={}".format(bucket_path))
   except Exception as e:
     print(e)
 
@@ -261,27 +236,21 @@ def gcs_upload(local_path, gcs_path, project_id=None, force=False):
   bucket_name = os.path.basename(bucket_path)
   
   if project_id is None:
-    client = GcsClient.client
-  else:
-    client = storage.Client( project=project_id )
+    project_id = GcsClient.project()
 
   try:
-    result = gsutil_ls(bucket_name, filter=filename, project_id=project_id)
+    files = gsutil_ls(bucket_name, filter=filename, project_id=project_id)
     # result = __shell__("gsutil ls {}".format(BUCKET_PATH, split=False))
-    if "BucketNotFoundException" in result: 
-      raise ValueError( "ERROR: bucket not found, path={}".format(bucket_name))
-    if result and not force:
-      raise Warning("WARNING: gcs file already exists, use force=True. bucket={}".format(bucket_name))
+    if "AccessDeniedException" in files:
+      raise RuntimeError("AccessDeniedException, msg={}".format(files))
+    if files and not force:
+      raise Warning("WARNING: gcs file already exists, use force=True. path={}".format(gcs_path))
 
-    # client = storage.Client( project=project_id )
-    bucket = client.get_bucket(bucket_name)
-    blob = storage.Blob(filename, bucket)
     print("uploading file={} ...".format(gcs_path))
-    blob.upload_from_filename(local_path)
+    cmd = "!gsutil cp {} {}".format(local_path, gcs_path)
+    result = __shell__(  cmd   )
     return gcs_path
 
-  except exceptions.NotFound:
-    raise ValueError("BucketNotFoundException: GCS bucket not found, path={}".format(bucket_path))
   except Exception as e:
     print(e)
 
@@ -295,12 +264,7 @@ def gcloud_auth(project_id):
   Return:
     GCS project id
   """
-  from google.colab import auth
-  # authenticate user and set project
-  auth.authenticate_user()
-  # project_id = "my-project-123"
-  get_ipython().system_raw("gcloud config set project {}".format(project_id) )
-  config_project(project_id)  # set for google.cloud.storage
+  config_project(project_id=project_id)  # set for google.cloud.storage
   return project_id
 
 # tested OK
@@ -337,8 +301,8 @@ def load_from_bucket(tar_filename, bucket, train_dir):
   bucket_path = "gs://{}/{}".format(bucket, tar_filename)
 
   found = gsutil_ls(bucket, filter=tar_filename)
-  if "BucketNotFoundException" in found: 
-    raise ValueError( "ERROR: bucket not found, path={}".format(bucket))
+  if "AccessDeniedException" in found:
+    raise RuntimeError("AccessDeniedException, msg={}".format(found))  
   if not found:
     raise ValueError( "ERROR: tar.gz file not found in bucket, path={}".format(bucket_path))
 
@@ -526,8 +490,8 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
 
     print( "writing tar.gz archive to, file={}, count={} ...".format(tar_filepath, len(filelist)))
     # tar -czvf {tar_filepath.tar.gz} -C {checkpoint_path} [f for f in os.listdir(...)]
-    # result = get_ipython().system_raw( "tar.gz -D {} {}".format(tar_filepath, " ".join(filelist)))
-    result = get_ipython().system_raw( "tar -czvf {} -C {} {}".format(tar_filepath, checkpoint_path, " ".join(filelist)))
+    # result = __shell__( "tar.gz -D {} {}".format(tar_filepath, " ".join(filelist)))
+    result = __shell__( "tar -czvf {} -C {} {}".format(tar_filepath, checkpoint_path, " ".join(filelist)))
     
     if not os.path.isfile(tar_filepath):
       raise RuntimeError("ERROR: tar file not created, path={}".format(tar_filepath))
