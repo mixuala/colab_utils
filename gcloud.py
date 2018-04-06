@@ -170,7 +170,10 @@ def gsutil_ls(bucket_name, filter=None, project_id=None):
   try:
     # client = storage.Client( project=project_id )
     bucket_path = "gs://{}/".format(bucket_name)
-    files = __shell__(  "!gsutil ls {} --project {}".format(bucket_path,project_id)  )
+
+    # gsutil ls -p nima-191903 gs://nima-ckpts/ 
+
+    files = __shell__(  "gsutil ls -p {}  {}".format(project_id, bucket_path)  )
     if "AccessDeniedException" in files:
       raise RuntimeError("AccessDeniedException, msg={}".format(files))
     if filter:
@@ -200,7 +203,7 @@ def gsutil_mb(bucket_name, gcs_class="regional", gcs_location="asia-east1", proj
 
   BUCKET = bucket_name
   BUCKET_PATH = "gs://{}".format(BUCKET)
-  cmd = "!gsutil mb -p {} -c {} -l {} {}".format(project_id, gcs_class, gcs_location, BUCKET_PATH)
+  cmd = "gsutil mb -p {} -c {} -l {} {}".format(project_id, gcs_class, gcs_location, BUCKET_PATH)
   result = __shell__(  cmd   )
   if "AccessDeniedException" in result:
     raise RuntimeError("AccessDeniedException, msg={}".format(result))
@@ -219,7 +222,7 @@ def gcs_download(gcs_path, local_path, project_id=None, force=False):
 
   try:
     print("downloading file={} ...".format(gcs_path))
-    cmd = "!gsutil cp {} {}".format(gcs_path, local_path) 
+    cmd = "gsutil cp {} {}".format(gcs_path, local_path) 
     result = __shell__(  cmd  )
     if "AccessDeniedException" in result:
       raise RuntimeError("AccessDeniedException, msg={}".format(result))
@@ -321,7 +324,8 @@ def load_from_bucket(tar_filename, bucket, train_dir):
   
   print( "extracting {} to {}".format(tar_filepath, train_dir))
   # untar.gz -j ignore directories, -d target dir, tar -xzvf {archive.tar.gz} --overwrite --directory {target}
-  get_ipython().system_raw( "tar -xzvf {} --overwrite --directory {} ".format(tar_filepath, train_dir))
+  # print( ">>> tar -xzvf {} --overwrite --directory {} ".format(tar_filepath, train_dir))
+  get_ipython().system_raw( "tar -xzvf {} --directory {} ".format(tar_filepath, train_dir))
   print( "installing checkpoint to {} ...".format(train_dir))
 
   # example filenames:
