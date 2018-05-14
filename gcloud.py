@@ -510,7 +510,7 @@ def save_to_bucket(train_dir, bucket, project_id, basename=None, step=None, save
     
     print("saved: tar={} \n> bucket={} \n> files={}".format(os.path.basename(tar_filepath), 
                                                       bucket_path, 
-                                                      files))
+                                                      filelist))
     return bucket_path
   else:
     print("no checkpoint found, path={}".format(checkpoint_path))
