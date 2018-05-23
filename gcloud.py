@@ -67,8 +67,14 @@
 
   !ls -l local_path
   !umount local_path
+  
+  ```
 
 
+  ************************************
+  * Using Hooks or Callbacks         *
+  ************************************
+  ```
   # use `SaverWithCallback` to save tf.train.Saver() checkpoint and events as a tar.gz archive to bucket
   #
   #
@@ -89,6 +95,38 @@
   saver = SaverWithCallback(save_checkpoint_to_bucket)
   # then call `saver.save()` as usual
 
+
+
+  # use `GcsArchiveHook` as a `tf.train.SessionRunHook` to archive checkpoint and 
+  # events as a tar.gz archive to bucket. Works together with `model_fn()` and `tf.Estimator` API
+  #
+  #
+  def model_fn(features, labels, mode, params):
+    # params["start"] = time.time()
+    # params["log_dir"]=TRAIN_LOG
+        
+    [...]
+
+    loss = [...]
+
+    if mode == tf.estimator.ModeKeys.TRAIN:
+      train_op = [...]
+
+      #
+      # add training_hooks
+      #
+      bucket = "my-bucket"
+      project_name = "my-project-123"      
+      archiveHook = GcsArchiveHook(every_n_secs=3600,
+                                      start = params["start"],
+                                      log=params["log_dir"], 
+                                      bucket=bucket, 
+                                      project=project_name)
+      return tf.estimator.EstimatorSpec(mode=mode, loss=loss, 
+                                      train_op=train_op,
+                                      training_hooks=[archiveHook],
+                                      )   
+
   ```
 
 """
@@ -96,6 +134,7 @@ import os
 import re
 import shutil
 import subprocess
+import time, datetime
 
 from apiclient.http import MediaIoBaseDownload
 from google.cloud import storage, exceptions
@@ -109,6 +148,7 @@ __all__ = [
   'save_to_bucket',
   'gcsfuse',
   'SaverWithCallback',
+  'GcsArchiveHook',
 ]
 
 class GcsClient(object):
@@ -393,6 +433,7 @@ def load_from_bucket(tar_filename, bucket, train_dir):
     # append line_entry to checkpoint_filename
     with open(checkpoint_filename, 'a') as f:
       f.write(line_entry)
+    # TODO: update line `model_checkpoint_path: [latest checkpoint or current loaded checkpoint??]`
 
   print("restored: bucket={} \n> checkpoint={}".format(bucket_path, checkpoint_name))
   return checkpoint_filename
@@ -680,4 +721,126 @@ class SaverWithCallback(tf.train.Saver):
           except Exception as e:
             print("WARNING: SaverWithCallback() callback exception, err={}".format(e))
       return model_checkpoint_path
+
+
+
+
+
+
+
+def _get_human_timestamp():
+  return datetime.datetime.now().strftime('%b-%d-%G-%I%M%p')
+
+def _get_elapsed_as_hms(start,end):
+  hours, rem = divmod(end-start, 3600)
+  minutes, seconds = divmod(rem, 60)
+  return "{:0>2}h{:0>2}m{:0>2}s".format(int(hours),int(minutes),int(seconds))
+  
+def _get_step_from_latest_checkpoint(dir):
+  """get global_step from checkpoint_path when outside of graph"""
+  import re
+  path = tf.train.latest_checkpoint(dir)
+  if not path:
+      return 0
+  found = re.search("(\d+)$", path)
+  return int(found.group()) if found else None   
+
+
+
+
+class GcsArchiveHook(tf.train.SessionRunHook):
+  """archive checkpoint to Google Cloud Storage
+  
+  after an intial delay, archive latest checkpoint and copy to GCS bucket 
+  useful for saving work before Colaboratory 12hr VM session limit expires
+
+  USAGE: 
+      archiveHook = GcsArchiveHook( log= params["log_dir"],
+                                    project= params["project_name"],
+                                    bucket= params["bucket"],
+                                    every_n_secs= 3600,
+                                    start = params["start"],  
+                                    )
+      return tf.estimator.EstimatorSpec(mode=mode, loss=loss, 
+                                      train_op=train_op,
+                                      training_hooks=[archiveHook],
+                                      )     
+  
+  args:
+    every_n_secs: archive interval in secs
+    delay_n_secs: initial delay in secs before first archive, default every_n_secs
+    start: start time for Jupyter code block, not tf.Estimator.run sessions
+    log_dir: path to checkpoint
+    bucket: GCS bucket name
+    project: GCS project name
+    
+  return:
+    GCS bucket URI
+  """
+
+  def __init__(self, log_dir, project, bucket, every_n_secs=3600, delay_n_secs=None, start=None):
+    assert os.path.isdir(log_dir), "GcsArchiveHook: log_dir does not exist, path={}".format(log_dir)
+    self.log = log_dir
+    self.bucket = bucket
+    self.project = project
+    gcloud_auth(self.project)
+
+
+    now = time.time()
+    self.interval = every_n_secs              # archive interval in secs 
+    self.after = delay_n_secs if delay_n_secs else every_n_secs    # initial delay in secs before FIRST archive
+    self.start = start if start else time.time()
+    
+    elapsed = now-self.start
+    self.iteration = (now - self.start) // self.after
+    
+    self.beep_interval = 15*60   # beep every 15 mins 
+    self.beep = self.start + self.beep_interval
+    self.iteration = elapsed // self.after
+    
+    step = _get_step_from_latest_checkpoint(self.log)
+    tf.logging.info(">>> GcsArchiveHook: session start at {}, continue from step={}, log_dir={}".format(
+                            _get_human_timestamp(), step, self.log))
+    remaining = self.after - (elapsed % self.after)
+    tf.logging.info(">>> GcsArchiveHook: next archive in {}".format(_get_elapsed_as_hms(0, remaining)))
+      
+      
+  def save_checkpoint_to_bucket(self, step=None ):
+    if step is None:
+      step = _get_step_from_latest_checkpoint(self.log)
+    
+    bucket_path = save_to_bucket(self.log, 
+                                      self.bucket, 
+                                      self.project, 
+                                      step=step,
+                                      save_events=True,
+                                      force=True)
+    return bucket_path
+      
+
+  def after_run(self, run_context, run_values):
+    now = time.time()
+    elapsed = now-self.start
+    
+    if (elapsed // self.after) > self.iteration:
+      # archive now
+      bucket_path = self.save_checkpoint_to_bucket()
+      tf.logging.info("\n>>> GcsArchiveHook: archiving to GCS, bucket=gs://{}".format(self.bucket))
+      tf.logging.info("        archived to {}\n".format(bucket_path))
+      
+      self.beep = self.start + self.beep_interval
+      self.iteration = elapsed // self.after
+      self.after = self.interval # reset to archive every n secs after initial delay
+      return
+    
+    if now > self.beep:
+      # print heartbeat
+      remaining = self.after - ((now - self.start) % self.after)
+      tf.logging.info(">>> GcsArchiveHook: next archive in {}, elapsed={}".format(
+          _get_elapsed_as_hms(0, remaining),
+          _get_elapsed_as_hms(0, elapsed),
+      ))      
+      self.beep = now + self.beep_interval
+      return
+         
     

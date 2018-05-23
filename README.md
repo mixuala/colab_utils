@@ -129,6 +129,8 @@ download and unzip checkpoint files from GCS bucket, save to train_dir
 colab_utils.gcloud.load_from_bucket(zip_filename, bucket, train_dir ):
 ```
 
+
+## Archiving to Google Cloud with Hooks and Callbacks
 ### `SaverWithCallback`
 adds a callback to the `tf.train.Saver.save()` method. This can be used to archive checkpoint and tensorboard event files to a GCS bucket
 
@@ -163,6 +165,38 @@ with tf.Graph().as_default():
                         saver=checkpoint_saver,
                        )
 ```
+
+### Class `GcsArchiveHook`
+Use `GcsArchiveHook` as an implementation of `tf.train.SessionRunHook` to archive checkpoint and 
+events as a `tar.gz` archive to a Google Cloud Storage bucket. Works together with `model_fn()` and the`tf.Estimator` API
+  ```
+  def model_fn(features, labels, mode, params):
+    # params["start"] = time.time()
+    # params["log_dir"]=TRAIN_LOG
+        
+    [...]
+
+    loss = [...]
+
+    if mode == tf.estimator.ModeKeys.TRAIN:
+      train_op = [...]
+
+      #
+      # add training_hooks
+      #
+      bucket = "my-bucket"
+      project_name = "my-project-123"      
+      archiveHook = GcsArchiveHook(every_n_secs=3600,
+                                      start = params["start"],
+                                      log=params["log_dir"], 
+                                      bucket=bucket, 
+                                      project=project_name)
+      return tf.estimator.EstimatorSpec(mode=mode, loss=loss, 
+                                      train_op=train_op,
+                                      training_hooks=[archiveHook],
+                                      )   
+
+  ```
 
 
 ## Mount a Google Cloud Storage bucket to the local filesystem
