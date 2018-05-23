@@ -786,10 +786,10 @@ class GcsArchiveHook(tf.train.SessionRunHook):
     gcloud_auth(self.project)
 
 
-    now = time.time()
+    now = int(time.time())
     self.interval = every_n_secs              # archive interval in secs 
     self.after = delay_n_secs if delay_n_secs else every_n_secs    # initial delay in secs before FIRST archive
-    self.start = start if start else time.time()
+    self.start = int(start) if start else now
     
     elapsed = now-self.start
     self.iteration = (now - self.start) // self.after
@@ -819,7 +819,7 @@ class GcsArchiveHook(tf.train.SessionRunHook):
       
 
   def after_run(self, run_context, run_values):
-    now = time.time()
+    now = int(time.time())
     elapsed = now-self.start
     
     if (elapsed // self.after) > self.iteration:
