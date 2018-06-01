@@ -149,6 +149,7 @@ __all__ = [
   'gcsfuse',
   'SaverWithCallback',
   'GcsArchiveHook',
+  'RestoreHook'
 ]
 
 class GcsClient(object):
@@ -843,4 +844,59 @@ class GcsArchiveHook(tf.train.SessionRunHook):
       self.beep = now + self.beep_interval
       return
          
+
+
+class RestoreHook(tf.train.SessionRunHook):
+  """restores model from a checkpoint_path with include/exclude variable filtering.
+  useful for excluding final FC layer from pre-trained models using exclude=["Logits"]
+
+  see:
+   - https://www.tensorflow.org/api_docs/python/tf/contrib/framework/assign_from_checkpoint_fn
+   - https://www.tensorflow.org/api_docs/python/tf/contrib/framework/get_variables_to_restore
+  
+  args:
+    checkpoint_path: full path to checkpoint
+    include: an optional list/tuple of scope strings for filtering which
+      variables from the VARIABLES collection to include. None would include all
+      the variables.
+    exclude: an optional list/tuple of scope strings for filtering which
+      variables from the VARIABLES collection to exclude. None it would not
+      exclude any.
+  
+  usage:
+
     
+    def main():
+      checkpoint_path = "/path/to/checkpoint/file.ckpt"
+      restore_hook = RestoreHook(checkpoint_path, exclude=['Logits'])
+      estimator = tf.estimator.Estimator( model_fn=model_fn, 
+                                          model_dir=[...],
+                                          params=params,
+                                          # Do NOT warm start together with RestoreHook
+                                          warm_start_from=None  
+                                         )
+      estimator.train( input_fn=lambda: input_fn(split, shuffle=True),
+                       hooks=[restore_hook]
+                      )                                         
+
+      
+  """
+  def __init__(self, checkpoint_path, include=None, exclude=None ):
+      self.checkpoint_path = checkpoint_path
+      self.include = include
+      self.exclude = exclude
+
+  def after_create_session(self, session, coord=None):
+      # delay get_variables_to_restore() until AFTER graph is created
+      var_list = tf.contrib.framework.get_variables_to_restore(include=self.include, exclude=self.exclude)
+      self.init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+              self.checkpoint_path,
+              var_list=var_list,
+              ignore_missing_vars=True
+              )      
+      if session.run(tf.train.get_or_create_global_step()) == 0:
+          # suppress WARN
+          log_level = tf.logging.get_verbosity()
+          tf.logging.set_verbosity(tf.logging.ERROR)
+          self.init_fn(session)
+          tf.logging.set_verbosity(log_level)    
