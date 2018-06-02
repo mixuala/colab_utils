@@ -881,22 +881,29 @@ class RestoreHook(tf.train.SessionRunHook):
 
       
   """
-  def __init__(self, checkpoint_path, include=None, exclude=None ):
+  def __init__(self, checkpoint_path, include=None, exclude=None, suppress_warnings=True ):
       self.checkpoint_path = checkpoint_path
       self.include = include
       self.exclude = exclude
+      self.suppress_warnings = suppress_warnings
+      self.init_fn = None
 
-  def after_create_session(self, session, coord=None):
-      # delay get_variables_to_restore() until AFTER graph is created
-      var_list = tf.contrib.framework.get_variables_to_restore(include=self.include, exclude=self.exclude)
-      self.init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+    def begin(self):
+        # delay get_variables_to_restore() until AFTER graph is created, but before finalized
+        if self.suppress_warnings:
+          log_level = tf.logging.get_verbosity()
+          tf.logging.set_verbosity(tf.logging.ERROR)
+
+        var_list = tf.contrib.framework.get_variables_to_restore(include=self.include, exclude=self.exclude)        
+        self.init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
               self.checkpoint_path,
               var_list=var_list,
               ignore_missing_vars=True
-              )      
-      if session.run(tf.train.get_or_create_global_step()) == 0:
-          # suppress WARN
-          log_level = tf.logging.get_verbosity()
-          tf.logging.set_verbosity(tf.logging.ERROR)
-          self.init_fn(session)
-          tf.logging.set_verbosity(log_level)    
+              )
+        if self.suppress_warnings:
+          tf.logging.set_verbosity(log_level)
+        
+
+    def after_create_session(self, session, coord=None):
+        if session.run(tf.train.get_or_create_global_step()) == 0:
+            self.init_fn(session)
